@@ -3,19 +3,19 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>2D Grondplan Teken App – Fase 1</title>
+  <title>2D Grondplan Teken App – Fase 5</title>
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
   <div class="app-shell">
     <header class="topbar hidden" id="topbar">
       <div class="dimension-group">
-        <input id="widthInput" type="number" min="1" value="400" />
+        <input id="widthInput" type="number" min="1" value="400" inputmode="decimal" />
         <span id="widthUnit">cm</span>
       </div>
       <span class="times">x</span>
       <div class="dimension-group">
-        <input id="heightInput" type="number" min="1" value="400" />
+        <input id="heightInput" type="number" min="1" value="400" inputmode="decimal" />
         <span id="heightUnit">cm</span>
       </div>
       <div class="topbar-spacer"></div>
@@ -26,18 +26,8 @@
       <section class="canvas-panel">
         <div class="canvas-stage" id="canvasStage">
           <svg id="planCanvas" viewBox="0 0 1200 900" xmlns="http://www.w3.org/2000/svg" aria-label="Tekenveld">
-            <defs>
-              <pattern id="smallGrid" width="40" height="40" patternUnits="userSpaceOnUse">
-                <path d="M 40 0 L 0 0 0 40" fill="none" class="grid-line-small" />
-              </pattern>
-              <pattern id="largeGrid" width="200" height="200" patternUnits="userSpaceOnUse">
-                <rect width="200" height="200" fill="url(#smallGrid)" />
-                <path d="M 200 0 L 0 0 0 200" fill="none" class="grid-line-large" />
-              </pattern>
-            </defs>
-
             <g id="viewportLayer">
-              <rect width="1200" height="900" fill="url(#largeGrid)" />
+              <rect width="1200" height="900" class="canvas-background" />
               <g id="guideLayer"></g>
               <g id="shapeLayer"></g>
               <g id="selectionLayer"></g>
@@ -82,7 +72,7 @@
       </aside>
     </main>
 
-    <footer>
+    <footer class="footer-shell">
       <div class="actionbar secondary-bar">
         <button class="action-btn" id="deleteBtn">Verwijder</button>
         <button class="action-btn" id="duplicateBtn">Dupliceer</button>

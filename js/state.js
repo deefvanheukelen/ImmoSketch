@@ -12,7 +12,7 @@ export const appState = {
     baseWidth: 1200,
     baseHeight: 900,
     zoom: 1,
-    minZoom: 0.45,
+    minZoom: 0.5,
     maxZoom: 4,
     panX: 0,
     panY: 0,
@@ -26,6 +26,7 @@ export const appState = {
       rotateSnapDeg: 45,
       rotateSnapThresholdDeg: 7,
       gridEnabled: true,
+      moveConnected: true,
     },
     selection: null,
     shapes: [],
@@ -46,7 +47,9 @@ export function clearSelection() {
 
 export function getSelectedShape() {
   const selected = appState.project.selection;
-  if (!selected || selected.type === 'loop') return null;
+  if (!selected) {
+    return null;
+  }
   return appState.project.shapes.find((shape) => shape.id === selected.id) ?? null;
 }
 
@@ -88,7 +91,9 @@ export function createShapeAt(tool, x, y) {
 
 export function updateSelectedShapeDimensions(widthValue, heightValue) {
   const shape = getSelectedShape();
-  if (!shape) return null;
+  if (!shape) {
+    return null;
+  }
 
   if (shape.type === 'face') {
     shape.widthCm = Math.max(1, widthValue);
@@ -114,7 +119,10 @@ export function updateSelectedShapeDimensions(widthValue, heightValue) {
 
 export function deleteSelectedShape() {
   const selected = appState.project.selection;
-  if (!selected || selected.type === 'loop') return false;
+  if (!selected) {
+    return false;
+  }
+
   const before = appState.project.shapes.length;
   appState.project.shapes = appState.project.shapes.filter((shape) => shape.id !== selected.id);
   clearSelection();
@@ -123,11 +131,18 @@ export function deleteSelectedShape() {
 
 export function duplicateSelectedShape() {
   const shape = getSelectedShape();
-  if (!shape) return null;
+  if (!shape) {
+    return null;
+  }
 
   if (shape.type === 'face') {
     appState.counters.face += 1;
-    const clone = { ...shape, id: `face-${appState.counters.face}`, x: shape.x + 40, y: shape.y + 40 };
+    const clone = {
+      ...shape,
+      id: `face-${appState.counters.face}`,
+      x: shape.x + 40,
+      y: shape.y + 40,
+    };
     appState.project.shapes.push(clone);
     setSelection({ type: 'face', id: clone.id });
     return clone;
@@ -139,8 +154,8 @@ export function duplicateSelectedShape() {
       ...shape,
       id: `line-${appState.counters.line}`,
       x1: shape.x1 + 40,
-      y1: shape.y1 + 40,
       x2: shape.x2 + 40,
+      y1: shape.y1 + 40,
       y2: shape.y2 + 40,
     };
     appState.project.shapes.push(clone);
@@ -152,12 +167,16 @@ export function duplicateSelectedShape() {
 }
 
 export function moveShapeBy(shape, deltaX, deltaY) {
-  if (!shape) return;
+  if (!shape) {
+    return;
+  }
+
   if (shape.type === 'face') {
     shape.x += deltaX;
     shape.y += deltaY;
     return;
   }
+
   if (shape.type === 'line') {
     shape.x1 += deltaX;
     shape.y1 += deltaY;
@@ -166,31 +185,18 @@ export function moveShapeBy(shape, deltaX, deltaY) {
   }
 }
 
-export function updateFaceSizePx(shape, widthPx, heightPx) {
-  if (!shape || shape.type !== 'face') return;
-  const scale = appState.project.settings.scalePxPerCm;
-  shape.widthCm = Math.max(20, widthPx) / scale;
-  shape.heightCm = Math.max(20, heightPx) / scale;
-}
-
-export function setLineEndpoint(shape, endpoint, x, y) {
-  if (!shape || shape.type !== 'line') return;
-  if (endpoint === 'start') {
-    shape.x1 = x;
-    shape.y1 = y;
+export function rotateFaceTo(shape, degrees) {
+  if (!shape || shape.type !== 'face') {
     return;
   }
-  shape.x2 = x;
-  shape.y2 = y;
-}
-
-export function rotateFaceTo(shape, degrees) {
-  if (!shape || shape.type !== 'face') return;
   shape.rotation = ((degrees % 360) + 360) % 360;
 }
 
 export function rotateLineTo(shape, degrees) {
-  if (!shape || shape.type !== 'line') return;
+  if (!shape || shape.type !== 'line') {
+    return;
+  }
+
   const centerX = (shape.x1 + shape.x2) / 2;
   const centerY = (shape.y1 + shape.y2) / 2;
   const length = Math.hypot(shape.x2 - shape.x1, shape.y2 - shape.y1);
@@ -206,7 +212,9 @@ export function setViewportZoom(nextZoom, anchor = null) {
   const viewport = appState.viewport;
   const oldZoom = viewport.zoom;
   const clamped = Math.min(viewport.maxZoom, Math.max(viewport.minZoom, nextZoom));
-  if (clamped === oldZoom) return;
+  if (clamped === oldZoom) {
+    return;
+  }
 
   if (anchor) {
     viewport.panX = anchor.x - ((anchor.x - viewport.panX) * (clamped / oldZoom));

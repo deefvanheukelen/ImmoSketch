@@ -1,7 +1,6 @@
-import { renderScene, getClosedLineLoops, getFaceMetrics, rotatePoint } from './renderer.js';
+import { renderScene } from './renderer.js';
 import {
   appState,
-  clearSelection,
   createShapeAt,
   deleteSelectedShape,
   duplicateSelectedShape,
@@ -12,12 +11,10 @@ import {
   rotateFaceTo,
   rotateLineTo,
   setActiveHandle,
-  setLineEndpoint,
   setSelectedTool,
   setSelection,
   setSnapLines,
   setViewportZoom,
-  updateFaceSizePx,
   updateSelectedShapeDimensions,
 } from './state.js';
 
@@ -32,32 +29,30 @@ const planCanvas = document.getElementById('planCanvas');
 const canvasStage = document.getElementById('canvasStage');
 const toolButtons = [...document.querySelectorAll('.tool-btn')];
 const actionButtons = [...document.querySelectorAll('.action-btn')];
+const dimensionInputs = [widthInput, heightInput];
 
 const pointerState = new Map();
-const dragGhost = document.createElement('div');
-dragGhost.className = 'drag-ghost hidden';
-document.body.appendChild(dragGhost);
-
-let toolbarDrag = null;
-let dragState = null;
 let pinchStart = null;
+let dragState = null;
 
 function showToast(message) {
   toast.textContent = message;
   toast.classList.add('show');
   window.clearTimeout(showToast.timeoutId);
-  showToast.timeoutId = window.setTimeout(() => toast.classList.remove('show'), 1500);
+  showToast.timeoutId = window.setTimeout(() => {
+    toast.classList.remove('show');
+  }, 1600);
 }
 
 function syncTopbarWithSelection() {
-  const selected = appState.project.selection;
   const shape = getSelectedShape();
-  if (!selected || !shape) {
+  if (!shape) {
     topbar.classList.add('hidden');
     return;
   }
 
   topbar.classList.remove('hidden');
+
   if (shape.type === 'face') {
     widthInput.disabled = false;
     heightInput.disabled = false;
@@ -65,125 +60,121 @@ function syncTopbarWithSelection() {
     heightInput.value = String(Math.round(shape.heightCm));
     widthUnit.textContent = 'cm';
     heightUnit.textContent = 'cm';
-    return;
   }
 
-  const lengthPx = Math.hypot(shape.x2 - shape.x1, shape.y2 - shape.y1);
-  widthInput.disabled = false;
-  heightInput.disabled = true;
-  widthInput.value = String(Math.round(lengthPx / appState.project.settings.scalePxPerCm));
-  heightInput.value = '0';
-  widthUnit.textContent = 'cm';
-  heightUnit.textContent = '—';
-}
-
-function updateGhost(clientX, clientY) {
-  dragGhost.style.left = `${clientX}px`;
-  dragGhost.style.top = `${clientY}px`;
-}
-
-function resetToolbarDrag() {
-  if (toolbarDrag?.button) toolbarDrag.button.classList.remove('dragging');
-  toolbarDrag = null;
-  dragGhost.classList.add('hidden');
+  if (shape.type === 'line') {
+    const lengthPx = Math.hypot(shape.x2 - shape.x1, shape.y2 - shape.y1);
+    const lengthCm = Math.round(lengthPx / appState.project.settings.scalePxPerCm);
+    widthInput.disabled = false;
+    heightInput.disabled = true;
+    widthInput.value = String(lengthCm);
+    heightInput.value = '0';
+    widthUnit.textContent = 'cm';
+    heightUnit.textContent = '—';
+  }
 }
 
 function bindToolButtons() {
   toolButtons.forEach((button) => {
-    button.addEventListener('pointerdown', (event) => {
+    button.addEventListener('click', () => {
+      toolButtons.forEach((btn) => btn.classList.remove('active'));
+      button.classList.add('active');
       setSelectedTool(button.dataset.tool);
-      toolButtons.forEach((btn) => btn.classList.toggle('active', btn === button));
-      toolbarDrag = { pointerId: event.pointerId, tool: button.dataset.tool, button };
-      button.classList.add('dragging');
-      dragGhost.textContent = `Sleep ${button.dataset.tool} naar het canvas`;
-      dragGhost.classList.remove('hidden');
-      updateGhost(event.clientX, event.clientY);
+      showToast(`Tool geselecteerd: ${button.dataset.tool}`);
     });
-  });
-
-  window.addEventListener('pointermove', (event) => {
-    if (toolbarDrag && toolbarDrag.pointerId === event.pointerId) updateGhost(event.clientX, event.clientY);
-  });
-
-  window.addEventListener('pointerup', (event) => {
-    if (!toolbarDrag || toolbarDrag.pointerId !== event.pointerId) return;
-    if (pointInsideCanvas(event.clientX, event.clientY)) {
-      placeElement(event.clientX, event.clientY, toolbarDrag.tool);
-    }
-    resetToolbarDrag();
   });
 }
 
+function applyDimensionChanges() {
+  const width = Math.max(1, Number(widthInput.value) || 1);
+  const height = Math.max(1, Number(heightInput.value) || 1);
+  const updatedShape = updateSelectedShapeDimensions(width, height);
+
+  if (!updatedShape) {
+    showToast('Geen element geselecteerd');
+    return;
+  }
+
+  syncTopbarWithSelection();
+  renderScene();
+  showToast('Afmetingen aangepast');
+}
+
 function bindDimensionControls() {
-  const apply = () => {
-    const width = Math.max(1, Number(widthInput.value) || 1);
-    const height = Math.max(1, Number(heightInput.value) || 1);
-    const shape = updateSelectedShapeDimensions(width, height);
-    if (!shape) return;
-    renderScene();
-    syncTopbarWithSelection();
-  };
-  applyDimensionsBtn.addEventListener('click', apply);
-  widthInput.addEventListener('change', apply);
-  heightInput.addEventListener('change', apply);
+  applyDimensionsBtn.addEventListener('click', applyDimensionChanges);
+  widthInput.addEventListener('change', applyDimensionChanges);
+  heightInput.addEventListener('change', applyDimensionChanges);
+
+  dimensionInputs.forEach((input) => {
+    input.addEventListener('focus', () => input.select());
+    input.addEventListener('click', () => input.select());
+    input.addEventListener('pointerup', (event) => {
+      event.preventDefault();
+      input.select();
+    });
+  });
 }
 
 function bindActionButtons() {
   actionButtons.forEach((button) => {
     button.addEventListener('click', () => {
       if (button.id === 'deleteBtn') {
-        const ok = deleteSelectedShape();
-        renderScene();
+        const removed = deleteSelectedShape();
         syncTopbarWithSelection();
-        showToast(ok ? 'Element verwijderd' : 'Niets geselecteerd');
+        renderScene();
+        showToast(removed ? 'Element verwijderd' : 'Niets geselecteerd');
         return;
       }
+
       if (button.id === 'duplicateBtn') {
-        const ok = duplicateSelectedShape();
-        renderScene();
+        const clone = duplicateSelectedShape();
         syncTopbarWithSelection();
-        showToast(ok ? 'Element gedupliceerd' : 'Niets geselecteerd');
+        renderScene();
+        showToast(clone ? 'Element gedupliceerd' : 'Niets geselecteerd');
         return;
       }
+
       showToast(`${button.textContent} is nog een placeholder`);
     });
   });
-}
-
-function pointInsideCanvas(clientX, clientY) {
-  const rect = canvasStage.getBoundingClientRect();
-  return clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom;
 }
 
 function getSvgPoint(clientX, clientY) {
   const rect = planCanvas.getBoundingClientRect();
   const baseX = ((clientX - rect.left) / rect.width) * appState.viewport.baseWidth;
   const baseY = ((clientY - rect.top) / rect.height) * appState.viewport.baseHeight;
+
   return {
     x: (baseX - appState.viewport.panX) / appState.viewport.zoom,
     y: (baseY - appState.viewport.panY) / appState.viewport.zoom,
   };
 }
 
-function clientDeltaToWorld(dx, dy) {
-  const rect = planCanvas.getBoundingClientRect();
-  return {
-    x: (dx / rect.width) * appState.viewport.baseWidth / appState.viewport.zoom,
-    y: (dy / rect.height) * appState.viewport.baseHeight / appState.viewport.zoom,
-  };
-}
-
 function snapValue(value, candidates, threshold) {
   let best = value;
-  let bestDistance = threshold + 1;
+  let minDistance = threshold + 1;
+
   candidates.forEach((candidate) => {
     const distance = Math.abs(candidate - value);
-    if (distance < bestDistance) {
-      bestDistance = distance;
+    if (distance < minDistance) {
+      minDistance = distance;
       best = candidate;
     }
   });
-  return bestDistance <= threshold ? best : value;
+
+  return minDistance <= threshold ? best : value;
+}
+
+function getFaceGeometry(shape) {
+  const scale = appState.project.settings.scalePxPerCm;
+  const widthPx = shape.widthCm * scale;
+  const heightPx = shape.heightCm * scale;
+  return {
+    widthPx,
+    heightPx,
+    centerX: shape.x + widthPx / 2,
+    centerY: shape.y + heightPx / 2,
+  };
 }
 
 function collectSnapCandidates(excludeShapeId = null) {
@@ -191,20 +182,16 @@ function collectSnapCandidates(excludeShapeId = null) {
   const candidatesY = [0, 450, 900];
 
   appState.project.shapes.forEach((shape) => {
-    if (shape.id === excludeShapeId) return;
-    if (shape.type === 'face') {
-      const metrics = getFaceMetrics(shape);
-      const center = { x: metrics.centerX, y: metrics.centerY };
-      [
-        { x: shape.x, y: shape.y },
-        { x: shape.x + metrics.widthPx, y: shape.y },
-        { x: shape.x + metrics.widthPx, y: shape.y + metrics.heightPx },
-        { x: shape.x, y: shape.y + metrics.heightPx },
-      ].map((point) => rotatePoint(point, center, metrics.rotation)).forEach((point) => {
-        candidatesX.push(point.x);
-        candidatesY.push(point.y);
-      });
+    if (shape.id === excludeShapeId) {
+      return;
     }
+
+    if (shape.type === 'face') {
+      const { widthPx, heightPx, centerX, centerY } = getFaceGeometry(shape);
+      candidatesX.push(shape.x, centerX, shape.x + widthPx);
+      candidatesY.push(shape.y, centerY, shape.y + heightPx);
+    }
+
     if (shape.type === 'line') {
       candidatesX.push(shape.x1, shape.x2, (shape.x1 + shape.x2) / 2);
       candidatesY.push(shape.y1, shape.y2, (shape.y1 + shape.y2) / 2);
@@ -215,26 +202,49 @@ function collectSnapCandidates(excludeShapeId = null) {
 }
 
 function getSnappedPoint(point, excludeShapeId = null) {
-  const { snapStepPx, snapThresholdPx } = appState.project.settings;
+  const step = appState.project.settings.snapStepPx;
+  const threshold = appState.project.settings.snapThresholdPx;
   const { candidatesX, candidatesY } = collectSnapCandidates(excludeShapeId);
-  candidatesX.push(Math.round(point.x / snapStepPx) * snapStepPx);
-  candidatesY.push(Math.round(point.y / snapStepPx) * snapStepPx);
+  const gridX = Math.round(point.x / step) * step;
+  const gridY = Math.round(point.y / step) * step;
 
-  const x = snapValue(point.x, candidatesX, snapThresholdPx);
-  const y = snapValue(point.y, candidatesY, snapThresholdPx);
+  candidatesX.push(gridX);
+  candidatesY.push(gridY);
+
+  const snappedX = snapValue(point.x, candidatesX, threshold);
+  const snappedY = snapValue(point.y, candidatesY, threshold);
   const lines = [];
-  if (x !== point.x) lines.push({ x1: x, y1: 0, x2: x, y2: 900 });
-  if (y !== point.y) lines.push({ x1: 0, y1: y, x2: 1200, y2: y });
-  return { x, y, lines };
+
+  if (snappedX !== point.x) {
+    lines.push({ x1: snappedX, y1: 0, x2: snappedX, y2: 900 });
+  }
+  if (snappedY !== point.y) {
+    lines.push({ x1: 0, y1: snappedY, x2: 1200, y2: snappedY });
+  }
+
+  return {
+    x: snappedX,
+    y: snappedY,
+    lines,
+  };
 }
 
 function getSnappedMoveDelta(shape, rawDeltaX, rawDeltaY) {
   if (shape.type === 'line') {
     const start = getSnappedPoint({ x: shape.x1 + rawDeltaX, y: shape.y1 + rawDeltaY }, shape.id);
-    return { deltaX: start.x - shape.x1, deltaY: start.y - shape.y1, lines: start.lines };
+    return {
+      deltaX: start.x - shape.x1,
+      deltaY: start.y - shape.y1,
+      lines: start.lines,
+    };
   }
-  const start = getSnappedPoint({ x: shape.x + rawDeltaX, y: shape.y + rawDeltaY }, shape.id);
-  return { deltaX: start.x - shape.x, deltaY: start.y - shape.y, lines: start.lines };
+
+  const snappedTopLeft = getSnappedPoint({ x: shape.x + rawDeltaX, y: shape.y + rawDeltaY }, shape.id);
+  return {
+    deltaX: snappedTopLeft.x - shape.x,
+    deltaY: snappedTopLeft.y - shape.y,
+    lines: snappedTopLeft.lines,
+  };
 }
 
 function normalizeDegrees(value) {
@@ -246,95 +256,78 @@ function snapAngle(degrees) {
   const threshold = appState.project.settings.rotateSnapThresholdDeg;
   const normalized = normalizeDegrees(degrees);
   const snapped = Math.round(normalized / step) * step;
-  const diff = Math.min(Math.abs(snapped - normalized), 360 - Math.abs(snapped - normalized));
-  return diff <= threshold ? normalizeDegrees(snapped) : normalized;
+  const diff = Math.abs(snapped - normalized);
+  const wrappedDiff = Math.min(diff, 360 - diff);
+  return wrappedDiff <= threshold ? normalizeDegrees(snapped) : normalized;
+}
+
+function getLineAngle(shape) {
+  return normalizeDegrees((Math.atan2(shape.y2 - shape.y1, shape.x2 - shape.x1) * 180) / Math.PI);
 }
 
 function startMove(shape, point) {
-  dragState = { mode: 'move', shapeId: shape.id, startPoint: point, original: structuredClone(shape) };
+  dragState = {
+    mode: 'move',
+    shapeId: shape.id,
+    startPoint: point,
+    original: structuredClone(shape),
+  };
 }
 
 function startRotate(shape, point) {
   const center = shape.type === 'line'
     ? { x: (shape.x1 + shape.x2) / 2, y: (shape.y1 + shape.y2) / 2 }
     : (() => {
-        const metrics = getFaceMetrics(shape);
-        return { x: metrics.centerX, y: metrics.centerY };
+        const geo = getFaceGeometry(shape);
+        return { x: geo.centerX, y: geo.centerY };
       })();
-
-  const currentAngle = shape.type === 'line'
-    ? Math.atan2(shape.y2 - shape.y1, shape.x2 - shape.x1) * 180 / Math.PI
-    : shape.rotation ?? 0;
 
   dragState = {
     mode: 'rotate',
     shapeId: shape.id,
     center,
-    startPointerAngle: Math.atan2(point.y - center.y, point.x - center.x),
-    baseRotation: currentAngle,
+    original: structuredClone(shape),
+    startAngle: Math.atan2(point.y - center.y, point.x - center.x),
+    baseRotation: shape.type === 'line' ? getLineAngle(shape) : normalizeDegrees(shape.rotation ?? 0),
   };
   setActiveHandle('rotate');
 }
 
-function startFaceResize(shape, handleName) {
-  dragState = {
-    mode: 'resize-face',
-    shapeId: shape.id,
-    handleName,
-    original: structuredClone(shape),
-  };
-  setActiveHandle(handleName);
-}
-
-function startLineEndpointDrag(shape, endpoint) {
-  dragState = { mode: 'endpoint', shapeId: shape.id, endpoint };
-  setActiveHandle(endpoint);
-}
-
-function placeElement(clientX, clientY, tool) {
+function placeElement(clientX, clientY) {
   const point = getSvgPoint(clientX, clientY);
   const snapped = getSnappedPoint(point);
   setSnapLines(snapped.lines);
-  createShapeAt(tool, snapped.x, snapped.y);
-  renderScene();
+
+  const shape = createShapeAt(appState.selectedTool, snapped.x, snapped.y);
   syncTopbarWithSelection();
-  showToast(`Element geplaatst: ${tool}`);
+  renderScene();
+  showToast(`Element geplaatst: ${shape.type === 'line' ? 'lijn' : appState.selectedTool}`);
+
   window.setTimeout(() => {
     setSnapLines([]);
     renderScene();
-  }, 200);
+  }, 220);
 }
 
-function trySelectTarget(target) {
-  const loopId = target?.dataset?.loopId;
-  if (loopId) {
-    setSelection({ type: 'loop', id: loopId });
-    syncTopbarWithSelection();
-    renderScene();
-    return { kind: 'loop' };
-  }
+function trySelectShape(target) {
   const shapeId = target?.dataset?.shapeId;
-  if (!shapeId) return null;
+  if (!shapeId) {
+    return null;
+  }
+
   const shape = getShapeById(shapeId);
-  if (!shape) return null;
+  if (!shape) {
+    return null;
+  }
+
   setSelection({ type: shape.type, id: shape.id });
   syncTopbarWithSelection();
   renderScene();
-  return { kind: 'shape', shape };
-}
-
-function beginCanvasPan(event) {
-  dragState = {
-    mode: 'pan',
-    lastClientX: event.clientX,
-    lastClientY: event.clientY,
-    moved: false,
-  };
+  return shape;
 }
 
 function bindCanvasPointerEvents() {
   canvasStage.addEventListener('pointerdown', (event) => {
-    if (toolbarDrag) return;
     canvasStage.setPointerCapture(event.pointerId);
     pointerState.set(event.pointerId, { x: event.clientX, y: event.clientY });
 
@@ -350,59 +343,51 @@ function bindCanvasPointerEvents() {
     }
 
     const point = getSvgPoint(event.clientX, event.clientY);
-    const handle = event.target?.dataset?.handle;
-    if (handle === 'rotate') {
+
+    if (event.target?.dataset?.handle === 'rotate') {
       const shape = getShapeById(event.target.dataset.shapeId);
-      if (shape) startRotate(shape, point);
-      return;
+      if (shape) {
+        startRotate(shape, point);
+        return;
+      }
     }
-    if (handle?.startsWith('resize-')) {
-      const shape = getShapeById(event.target.dataset.shapeId);
-      if (shape?.type === 'face') startFaceResize(shape, handle.replace('resize-', ''));
-      return;
-    }
-    if (handle?.startsWith('endpoint-')) {
-      const shape = getShapeById(event.target.dataset.shapeId);
-      if (shape?.type === 'line') startLineEndpointDrag(shape, handle.replace('endpoint-', ''));
+
+    const shape = trySelectShape(event.target);
+    if (shape) {
+      startMove(shape, point);
       return;
     }
 
-    const selected = trySelectTarget(event.target);
-    if (selected?.kind === 'shape') {
-      startMove(selected.shape, point);
-      return;
-    }
-
-    beginCanvasPan(event);
+    dragState = null;
+    placeElement(event.clientX, event.clientY);
   });
 
   canvasStage.addEventListener('pointermove', (event) => {
-    if (!pointerState.has(event.pointerId)) return;
+    if (!pointerState.has(event.pointerId)) {
+      return;
+    }
+
     pointerState.set(event.pointerId, { x: event.clientX, y: event.clientY });
 
     if (pointerState.size === 2 && pinchStart) {
       const values = [...pointerState.values()];
       const distance = Math.hypot(values[1].x - values[0].x, values[1].y - values[0].y);
-      setViewportZoom(pinchStart.zoom * (distance / pinchStart.distance), pinchStart.anchor);
+      const nextZoom = pinchStart.zoom * (distance / pinchStart.distance);
+      setViewportZoom(nextZoom, pinchStart.anchor);
       renderScene();
       return;
     }
 
-    if (!dragState) return;
-    const point = getSvgPoint(event.clientX, event.clientY);
-
-    if (dragState.mode === 'pan') {
-      const delta = clientDeltaToWorld(event.clientX - dragState.lastClientX, event.clientY - dragState.lastClientY);
-      panViewport(delta.x, delta.y);
-      dragState.lastClientX = event.clientX;
-      dragState.lastClientY = event.clientY;
-      dragState.moved = dragState.moved || Math.abs(delta.x) > 0.1 || Math.abs(delta.y) > 0.1;
-      renderScene();
+    if (!dragState) {
       return;
     }
 
     const shape = getShapeById(dragState.shapeId);
-    if (!shape) return;
+    if (!shape) {
+      return;
+    }
+
+    const point = getSvgPoint(event.clientX, event.clientY);
 
     if (dragState.mode === 'move') {
       Object.assign(shape, structuredClone(dragState.original));
@@ -411,81 +396,80 @@ function bindCanvasPointerEvents() {
       const snapped = getSnappedMoveDelta(shape, rawDeltaX, rawDeltaY);
       moveShapeBy(shape, snapped.deltaX, snapped.deltaY);
       setSnapLines(snapped.lines);
-      renderScene();
       syncTopbarWithSelection();
-      return;
-    }
-
-    if (dragState.mode === 'endpoint') {
-      const snapped = getSnappedPoint(point, shape.id);
-      setLineEndpoint(shape, dragState.endpoint, snapped.x, snapped.y);
-      setSnapLines(snapped.lines);
       renderScene();
-      syncTopbarWithSelection();
       return;
     }
 
     if (dragState.mode === 'rotate') {
-      const currentPointerAngle = Math.atan2(point.y - dragState.center.y, point.x - dragState.center.x);
-      const deltaDeg = (currentPointerAngle - dragState.startPointerAngle) * 180 / Math.PI;
-      const nextDeg = snapAngle(dragState.baseRotation + deltaDeg);
-      if (shape.type === 'face') rotateFaceTo(shape, nextDeg);
-      else rotateLineTo(shape, nextDeg);
-      renderScene();
+      const currentAngle = Math.atan2(point.y - dragState.center.y, point.x - dragState.center.x);
+      const deltaDeg = ((currentAngle - dragState.startAngle) * 180) / Math.PI;
+      const targetDeg = snapAngle(dragState.baseRotation + deltaDeg);
+      Object.assign(shape, structuredClone(dragState.original));
+      if (shape.type === 'line') {
+        rotateLineTo(shape, targetDeg);
+      } else {
+        rotateFaceTo(shape, targetDeg);
+      }
+      setSnapLines([]);
       syncTopbarWithSelection();
-      return;
-    }
-
-    if (dragState.mode === 'resize-face') {
-      const original = dragState.original;
-      const metrics = getFaceMetrics(original);
-      const center = { x: metrics.centerX, y: metrics.centerY };
-      const local = rotatePoint(point, center, -(original.rotation ?? 0));
-      const widthPx = Math.max(20, Math.abs(local.x - center.x) * 2);
-      const heightPx = Math.max(20, Math.abs(local.y - center.y) * 2);
-      updateFaceSizePx(shape, widthPx, heightPx);
-      shape.x = center.x - (shape.widthCm * appState.project.settings.scalePxPerCm) / 2;
-      shape.y = center.y - (shape.heightCm * appState.project.settings.scalePxPerCm) / 2;
       renderScene();
-      syncTopbarWithSelection();
     }
   });
 
-  function finishPointer(event) {
+  function endPointer(event) {
     pointerState.delete(event.pointerId);
-    if (pointerState.size < 2) pinchStart = null;
-
-    if (dragState?.mode === 'pan' && !dragState.moved) {
-      clearSelection();
-      syncTopbarWithSelection();
+    if (pointerState.size < 2) {
+      pinchStart = null;
+    }
+    if (pointerState.size === 0) {
+      dragState = null;
+      setActiveHandle(null);
+      setSnapLines([]);
       renderScene();
     }
-
-    dragState = null;
-    setActiveHandle(null);
-    setSnapLines([]);
-    renderScene();
   }
 
-  canvasStage.addEventListener('pointerup', finishPointer);
-  canvasStage.addEventListener('pointercancel', finishPointer);
+  canvasStage.addEventListener('pointerup', endPointer);
+  canvasStage.addEventListener('pointercancel', endPointer);
 
   canvasStage.addEventListener('wheel', (event) => {
     event.preventDefault();
-    const factor = event.deltaY < 0 ? 1.12 : 0.9;
-    setViewportZoom(appState.viewport.zoom * factor, getSvgPoint(event.clientX, event.clientY));
+    const direction = event.deltaY < 0 ? 1.1 : 0.9;
+    const anchor = getSvgPoint(event.clientX, event.clientY);
+    setViewportZoom(appState.viewport.zoom * direction, anchor);
     renderScene();
   }, { passive: false });
-}
 
-function seedDemo() {
-  createShapeAt('square', 220, 180);
-  clearSelection();
+  let panStart = null;
+  canvasStage.addEventListener('contextmenu', (event) => event.preventDefault());
+
+  canvasStage.addEventListener('mousedown', (event) => {
+    if (event.button !== 1 && event.button !== 2) {
+      return;
+    }
+    panStart = { x: event.clientX, y: event.clientY };
+  });
+
+  window.addEventListener('mousemove', (event) => {
+    if (!panStart) {
+      return;
+    }
+    const deltaX = event.clientX - panStart.x;
+    const deltaY = event.clientY - panStart.y;
+    panViewport(deltaX, deltaY);
+    panStart = { x: event.clientX, y: event.clientY };
+    renderScene();
+  });
+
+  window.addEventListener('mouseup', () => {
+    panStart = null;
+  });
 }
 
 bindToolButtons();
 bindDimensionControls();
 bindActionButtons();
 bindCanvasPointerEvents();
-seedDemo();
+syncTopbarWithSelection();
 renderScene();
