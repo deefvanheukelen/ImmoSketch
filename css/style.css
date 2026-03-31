@@ -271,6 +271,22 @@ body {
   stroke-width: 1;
   stroke-linecap: square;
 }
+.line-hit-area {
+  stroke: rgba(0, 0, 0, 0);
+  stroke-width: 22;
+  stroke-linecap: round;
+}
+
+.derived-loop {
+  fill: rgba(255, 255, 255, 0.18);
+  stroke: transparent;
+  stroke-width: 1;
+}
+
+.loop-selection {
+  fill: rgba(29, 207, 61, 0.08);
+}
+
 
 .selection-outline {
   fill: none;

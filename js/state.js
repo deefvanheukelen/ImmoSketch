@@ -12,7 +12,7 @@ export const appState = {
     baseWidth: 1200,
     baseHeight: 900,
     zoom: 1,
-    minZoom: 0.5,
+    minZoom: 0.45,
     maxZoom: 4,
     panX: 0,
     panY: 0,
@@ -46,7 +46,7 @@ export function clearSelection() {
 
 export function getSelectedShape() {
   const selected = appState.project.selection;
-  if (!selected) return null;
+  if (!selected || selected.type === 'loop') return null;
   return appState.project.shapes.find((shape) => shape.id === selected.id) ?? null;
 }
 
@@ -114,7 +114,7 @@ export function updateSelectedShapeDimensions(widthValue, heightValue) {
 
 export function deleteSelectedShape() {
   const selected = appState.project.selection;
-  if (!selected) return false;
+  if (!selected || selected.type === 'loop') return false;
   const before = appState.project.shapes.length;
   appState.project.shapes = appState.project.shapes.filter((shape) => shape.id !== selected.id);
   clearSelection();
