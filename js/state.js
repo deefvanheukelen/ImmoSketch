@@ -7,6 +7,7 @@ export const appState = {
   interaction: {
     snapLines: [],
     activeHandle: null,
+    toolDrag: null,
   },
   viewport: {
     baseWidth: 1200,
@@ -25,8 +26,6 @@ export const appState = {
       snapThresholdPx: 12,
       rotateSnapDeg: 45,
       rotateSnapThresholdDeg: 7,
-      gridEnabled: true,
-      moveConnected: true,
     },
     selection: null,
     shapes: [],
@@ -47,9 +46,7 @@ export function clearSelection() {
 
 export function getSelectedShape() {
   const selected = appState.project.selection;
-  if (!selected) {
-    return null;
-  }
+  if (!selected) return null;
   return appState.project.shapes.find((shape) => shape.id === selected.id) ?? null;
 }
 
@@ -91,9 +88,7 @@ export function createShapeAt(tool, x, y) {
 
 export function updateSelectedShapeDimensions(widthValue, heightValue) {
   const shape = getSelectedShape();
-  if (!shape) {
-    return null;
-  }
+  if (!shape) return null;
 
   if (shape.type === 'face') {
     shape.widthCm = Math.max(1, widthValue);
@@ -119,10 +114,7 @@ export function updateSelectedShapeDimensions(widthValue, heightValue) {
 
 export function deleteSelectedShape() {
   const selected = appState.project.selection;
-  if (!selected) {
-    return false;
-  }
-
+  if (!selected) return false;
   const before = appState.project.shapes.length;
   appState.project.shapes = appState.project.shapes.filter((shape) => shape.id !== selected.id);
   clearSelection();
@@ -131,72 +123,69 @@ export function deleteSelectedShape() {
 
 export function duplicateSelectedShape() {
   const shape = getSelectedShape();
-  if (!shape) {
-    return null;
-  }
+  if (!shape) return null;
 
   if (shape.type === 'face') {
     appState.counters.face += 1;
-    const clone = {
-      ...shape,
-      id: `face-${appState.counters.face}`,
-      x: shape.x + 40,
-      y: shape.y + 40,
-    };
+    const clone = { ...shape, id: `face-${appState.counters.face}`, x: shape.x + 40, y: shape.y + 40 };
     appState.project.shapes.push(clone);
     setSelection({ type: 'face', id: clone.id });
     return clone;
   }
 
-  if (shape.type === 'line') {
-    appState.counters.line += 1;
-    const clone = {
-      ...shape,
-      id: `line-${appState.counters.line}`,
-      x1: shape.x1 + 40,
-      x2: shape.x2 + 40,
-      y1: shape.y1 + 40,
-      y2: shape.y2 + 40,
-    };
-    appState.project.shapes.push(clone);
-    setSelection({ type: 'line', id: clone.id });
-    return clone;
-  }
-
-  return null;
+  appState.counters.line += 1;
+  const clone = {
+    ...shape,
+    id: `line-${appState.counters.line}`,
+    x1: shape.x1 + 40,
+    y1: shape.y1 + 40,
+    x2: shape.x2 + 40,
+    y2: shape.y2 + 40,
+  };
+  appState.project.shapes.push(clone);
+  setSelection({ type: 'line', id: clone.id });
+  return clone;
 }
 
 export function moveShapeBy(shape, deltaX, deltaY) {
-  if (!shape) {
-    return;
-  }
-
+  if (!shape) return;
   if (shape.type === 'face') {
     shape.x += deltaX;
     shape.y += deltaY;
     return;
   }
+  shape.x1 += deltaX;
+  shape.y1 += deltaY;
+  shape.x2 += deltaX;
+  shape.y2 += deltaY;
+}
 
-  if (shape.type === 'line') {
-    shape.x1 += deltaX;
-    shape.y1 += deltaY;
-    shape.x2 += deltaX;
-    shape.y2 += deltaY;
+export function updateFaceFromPx(shape, x, y, widthPx, heightPx) {
+  if (!shape || shape.type !== 'face') return;
+  shape.x = x;
+  shape.y = y;
+  shape.widthCm = Math.max(1, widthPx / appState.project.settings.scalePxPerCm);
+  shape.heightCm = Math.max(1, heightPx / appState.project.settings.scalePxPerCm);
+}
+
+export function updateLineEndpoint(shape, endpoint, x, y) {
+  if (!shape || shape.type !== 'line') return;
+  if (endpoint === 'start') {
+    shape.x1 = x;
+    shape.y1 = y;
+    return;
   }
+  shape.x2 = x;
+  shape.y2 = y;
 }
 
 export function rotateFaceTo(shape, degrees) {
-  if (!shape || shape.type !== 'face') {
-    return;
-  }
+  if (!shape || shape.type !== 'face') return;
   shape.rotation = ((degrees % 360) + 360) % 360;
 }
 
 export function rotateLineTo(shape, degrees) {
-  if (!shape || shape.type !== 'line') {
-    return;
-  }
-
+  if (!shape || shape.type !== 'line') return;
   const centerX = (shape.x1 + shape.x2) / 2;
   const centerY = (shape.y1 + shape.y2) / 2;
   const length = Math.hypot(shape.x2 - shape.x1, shape.y2 - shape.y1);
@@ -212,9 +201,7 @@ export function setViewportZoom(nextZoom, anchor = null) {
   const viewport = appState.viewport;
   const oldZoom = viewport.zoom;
   const clamped = Math.min(viewport.maxZoom, Math.max(viewport.minZoom, nextZoom));
-  if (clamped === oldZoom) {
-    return;
-  }
+  if (clamped === oldZoom) return;
 
   if (anchor) {
     viewport.panX = anchor.x - ((anchor.x - viewport.panX) * (clamped / oldZoom));
@@ -235,4 +222,8 @@ export function setSnapLines(lines) {
 
 export function setActiveHandle(handle) {
   appState.interaction.activeHandle = handle;
+}
+
+export function setToolDrag(toolDrag) {
+  appState.interaction.toolDrag = toolDrag;
 }
