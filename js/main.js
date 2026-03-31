@@ -28,6 +28,8 @@ const widthInput = document.getElementById('widthInput');
 const heightInput = document.getElementById('heightInput');
 const widthUnit = document.getElementById('widthUnit');
 const heightUnit = document.getElementById('heightUnit');
+const heightGroup = document.getElementById('heightGroup');
+const dimensionTimes = document.getElementById('dimensionTimes');
 const applyDimensionsBtn = document.getElementById('applyDimensionsBtn');
 const planCanvas = document.getElementById('planCanvas');
 const canvasStage = document.getElementById('canvasStage');
@@ -306,15 +308,24 @@ function updateSelectionUI() {
   const shape = getSelectedShape();
   topbar.classList.toggle('hidden', !shape);
   footerShell?.classList.toggle('has-selection', Boolean(shape));
+  topbar.classList.toggle('door-single-mode', Boolean(shape?.type === 'face' && shape.metaTool === 'door'));
 
   if (!shape) return;
 
   if (shape.type === 'face') {
     widthInput.disabled = false;
-    heightInput.disabled = false;
     widthInput.value = String(Math.round(shape.widthCm));
-    heightInput.value = String(Math.round(shape.heightCm));
     widthUnit.textContent = 'cm';
+
+    if (shape.metaTool === 'door') {
+      heightInput.disabled = true;
+      heightInput.value = String(Math.round(shape.widthCm));
+      heightUnit.textContent = 'cm';
+      return;
+    }
+
+    heightInput.disabled = false;
+    heightInput.value = String(Math.round(shape.heightCm));
     heightUnit.textContent = 'cm';
     return;
   }

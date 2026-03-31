@@ -75,8 +75,8 @@ export function createShapeAt(tool, x, y) {
     type: 'face',
     x,
     y,
-    widthCm: tool === 'door' ? 180 : 400,
-    heightCm: tool === 'door' ? 180 : 400,
+    widthCm: tool === 'door' ? 100 : 400,
+    heightCm: tool === 'door' ? 100 : 400,
     rotation: 0,
     metaTool: tool,
   };
@@ -90,6 +90,12 @@ export function updateSelectedShapeDimensions(widthValue, heightValue) {
   if (!shape) return null;
 
   if (shape.type === 'face') {
+    if (shape.metaTool === 'door') {
+      const size = Math.max(1, widthValue);
+      shape.widthCm = size;
+      shape.heightCm = size;
+      return shape;
+    }
     shape.widthCm = Math.max(1, widthValue);
     shape.heightCm = Math.max(1, heightValue);
     return shape;

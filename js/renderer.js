@@ -69,6 +69,9 @@ function drawDoorShape(layer, shape, extraAttrs = {}) {
     transform: `rotate(${rotation} ${centerX} ${centerY})`,
     ...extraAttrs,
   });
+  group.appendChild(createSvgEl('rect', {
+    x: shape.x - 18, y: shape.y - 18, width: widthPx + 36, height: heightPx + 36, class: 'door-hit-area', 'data-shape-id': shape.id,
+  }));
   group.appendChild(createSvgEl('line', {
     x1: shape.x, y1: shape.y, x2: shape.x, y2: shape.y + heightPx, class: 'door-guide-line', 'data-shape-id': shape.id,
   }));
@@ -139,6 +142,24 @@ export function renderScene() {
     const rotatePointWorld = rotatePoint({ x: centerX, y: shape.y - 42 }, { x: centerX, y: centerY }, rotation);
     appendHandle(selectionLayer, { cx: rotatePointWorld.x, cy: rotatePointWorld.y, class: 'rotate-handle', 'data-handle': 'rotate', 'data-shape-id': shape.id }, 15, 25);
 
+    if (shape.metaTool === 'door') {
+      const proxyPoint = rotatePoint({ x: centerX, y: shape.y + heightPx + 28 }, { x: centerX, y: centerY }, rotation);
+      selectionLayer.appendChild(createSvgEl('rect', {
+        x: proxyPoint.x - 18,
+        y: proxyPoint.y - 18,
+        width: 36,
+        height: 36,
+        class: 'move-proxy-handle',
+        'data-handle': 'move-proxy',
+        'data-shape-id': shape.id,
+      }));
+      selectionLayer.appendChild(createSvgEl('text', {
+        x: proxyPoint.x,
+        y: proxyPoint.y + 1,
+        class: 'move-proxy-handle-label',
+      })).textContent = '□';
+    }
+
     const inset = Math.max(16, Math.min(widthPx, heightPx) * 0.14);
     const topLocal = { x: centerX, y: shape.y + inset };
     const rightLocal = { x: shape.x + widthPx - inset, y: centerY };
@@ -175,7 +196,7 @@ export function drawToolPreview(layer) {
   }
 
   if (drag.tool === 'door') {
-    const previewShape = { type: 'face', metaTool: 'door', x: drag.previewPoint.x, y: drag.previewPoint.y, widthCm: 180, heightCm: 180, rotation: 0 };
+    const previewShape = { type: 'face', metaTool: 'door', x: drag.previewPoint.x, y: drag.previewPoint.y, widthCm: 100, heightCm: 100, rotation: 0 };
     drawDoorShape(layer, previewShape, { class: 'tool-preview-group' });
     return;
   }

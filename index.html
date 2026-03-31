@@ -3,18 +3,18 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>2D Grondplan Teken App - versie 03</title>
+  <title>2D Grondplan Teken App – Fase 6</title>
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
   <div class="app-shell">
     <header class="topbar hidden" id="topbar">
-      <div class="dimension-group">
+      <div class="dimension-group" id="widthGroup">
         <input id="widthInput" type="number" min="1" value="400" inputmode="decimal" />
         <span id="widthUnit">cm</span>
       </div>
-      <span class="times">x</span>
-      <div class="dimension-group">
+      <span class="times" id="dimensionTimes">x</span>
+      <div class="dimension-group" id="heightGroup">
         <input id="heightInput" type="number" min="1" value="400" inputmode="decimal" />
         <span id="heightUnit">cm</span>
       </div>

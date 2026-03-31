@@ -99,6 +99,33 @@ body {
   font-size: 14px;
 }
 
+
+.topbar.door-single-mode #heightGroup,
+.topbar.door-single-mode #dimensionTimes {
+  display: none;
+}
+
+.door-hit-area {
+  fill: rgba(0, 0, 0, 0);
+  stroke: rgba(0, 0, 0, 0);
+  pointer-events: all;
+}
+
+.move-proxy-handle {
+  fill: #ffffff;
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+.move-proxy-handle-label {
+  fill: var(--accent);
+  font-size: 14px;
+  font-weight: 700;
+  pointer-events: none;
+  text-anchor: middle;
+  dominant-baseline: middle;
+}
+
 .workspace {
   min-height: calc(100dvh - var(--footer-height) - env(safe-area-inset-bottom, 0px));
   display: grid;
