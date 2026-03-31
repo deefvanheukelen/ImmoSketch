@@ -102,7 +102,8 @@ body {
 .workspace {
   min-height: calc(100dvh - var(--footer-height) - env(safe-area-inset-bottom, 0px));
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 94px;
+  grid-template-columns: 1fr;
+  grid-template-rows: auto 1fr;
 }
 
 .canvas-panel {
@@ -128,19 +129,25 @@ body {
 .canvas-background { fill: var(--canvas); }
 
 .right-toolbar {
+  order: -1;
   background: var(--toolbar);
   color: var(--text);
   display: flex;
-  flex-direction: column;
-  align-items: center;
+  flex-direction: row;
+  align-items: stretch;
+  justify-content: flex-start;
   gap: 8px;
-  padding: 12px 8px;
-  overflow-y: auto;
-  touch-action: none;
+  padding: 10px 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  touch-action: pan-x;
+  min-height: 96px;
+  scrollbar-width: thin;
 }
 
 .tool-btn {
-  width: 100%;
+  width: auto;
+  min-width: 78px;
   border: none;
   background: transparent;
   color: inherit;
@@ -171,19 +178,48 @@ body {
   right: 2px;
   top: 19px;
   height: 1px;
-  background: #101010;
+  background: #fff;
 }
 
 .square-icon {
-  border: 1px solid #101010;
+  border: 1px solid #fff;
   background: rgba(255, 255, 255, 0.3);
 }
 
 .door-icon {
-  border-left: 1px solid #101010;
-  border-bottom: 1px solid #101010;
-  border-top-left-radius: 40px;
+  width: 42px;
+  height: 42px;
 }
+
+.door-icon::before {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 5px;
+  width: 1px;
+  height: 30px;
+  background: #fff;
+}
+
+.door-icon::after {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 5px;
+  width: 30px;
+  height: 30px;
+  border-top: 1px solid #fff;
+  border-right: 1px solid transparent;
+  border-bottom: 1px solid transparent;
+  border-left: 1px solid transparent;
+  border-top-left-radius: 0;
+  border-top-right-radius: 30px;
+  border-bottom-left-radius: 30px;
+  border-bottom-right-radius: 0;
+  transform: rotate(90deg);
+  clip-path: inset(0 0 0 0);
+}
+
 
 .double-door-icon::before,
 .double-door-icon::after {
@@ -192,8 +228,8 @@ body {
   width: 18px;
   height: 18px;
   bottom: 2px;
-  border-bottom: 1px solid #101010;
-  border-left: 1px solid #101010;
+  border-bottom: 1px solid #fff;
+  border-left: 1px solid #fff;
   border-top-left-radius: 20px;
 }
 
@@ -207,8 +243,8 @@ body {
   right: 1px;
   top: 19px;
   height: 1px;
-  background: #777;
-  border: 1px solid #222;
+  background: rgba(255, 255, 255, 0.18);
+  border: 1px solid #fff;
 }
 
 .window-icon::before {
@@ -218,12 +254,12 @@ body {
   right: 4px;
   top: 19px;
   height: 1px;
-  background: #f4f4f4;
-  border: 1px solid #222;
+  background: #fff;
+  border: 1px solid #fff;
 }
 
 .opening-icon {
-  border: 1px dashed rgba(0, 0, 0, 0.45);
+  border: 1px dashed rgba(255, 255, 255, 0.8);
   width: 34px;
   height: 16px;
   margin-top: 12px;
@@ -234,7 +270,7 @@ body {
   position: absolute;
   inset: 7px 7px 12px 7px;
   background: #fff;
-  border: 1px solid #222;
+  border: 1px solid #fff;
   border-radius: 3px;
 }
 
@@ -246,8 +282,8 @@ body {
   width: 10px;
   height: 10px;
   background: #fff;
-  border-left: 1px solid #222;
-  border-bottom: 1px solid #222;
+  border-left: 1px solid #fff;
+  border-bottom: 1px solid #fff;
   transform: skewY(35deg);
 }
 
@@ -304,6 +340,14 @@ body {
 
 .face-shape {
   fill: rgba(255, 255, 255, 0.18);
+  stroke: #111;
+  stroke-width: 1;
+}
+
+.door-shape,
+.door-guide-line,
+.door-arc {
+  fill: none;
   stroke: #111;
   stroke-width: 1;
 }
@@ -413,18 +457,7 @@ body {
     --secondary-bar-height: 56px;
   }
 
-  .workspace {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto 1fr;
-  }
-
   .right-toolbar {
-    order: -1;
-    flex-direction: row;
-    align-items: stretch;
-    justify-content: flex-start;
-    overflow-x: auto;
-    overflow-y: hidden;
     padding: 8px;
     min-height: 92px;
   }

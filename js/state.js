@@ -75,8 +75,8 @@ export function createShapeAt(tool, x, y) {
     type: 'face',
     x,
     y,
-    widthCm: 400,
-    heightCm: 400,
+    widthCm: tool === 'door' ? 180 : 400,
+    heightCm: tool === 'door' ? 180 : 400,
     rotation: 0,
     metaTool: tool,
   };

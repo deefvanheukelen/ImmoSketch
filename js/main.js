@@ -134,6 +134,21 @@ function getShapeSnapData(shape) {
   const points = [corners.nw, corners.ne, corners.se, corners.sw, corners.center];
   const xs = points.map((point) => point.x);
   const ys = points.map((point) => point.y);
+
+  if (shape.metaTool === 'door') {
+    return {
+      points,
+      xValues: [corners.nw.x, corners.sw.x, corners.ne.x, corners.center.x],
+      yValues: [corners.nw.y, corners.ne.y, corners.sw.y, corners.center.y],
+      bounds: {
+        left: Math.min(...xs),
+        right: Math.max(...xs),
+        top: Math.min(...ys),
+        bottom: Math.max(...ys),
+      },
+    };
+  }
+
   return {
     points,
     xValues: [Math.min(...xs), corners.center.x, Math.max(...xs)],
