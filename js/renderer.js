@@ -87,27 +87,51 @@ function drawDoorShape(layer, shape, extraAttrs = {}) {
 function drawDoubleDoorShape(layer, shape, extraAttrs = {}) {
   const { widthPx, heightPx, centerX, centerY, rotation } = getFaceMetrics(shape);
   const halfWidth = widthPx / 2;
+  const midX = shape.x + halfWidth;
+  const bottomY = shape.y + heightPx;
   const group = createSvgEl('g', {
     transform: `rotate(${rotation} ${centerX} ${centerY})`,
     ...extraAttrs,
   });
   group.appendChild(createSvgEl('rect', {
-    x: shape.x - 18, y: shape.y - 18, width: widthPx + 36, height: heightPx + 36, class: 'door-hit-area', 'data-shape-id': shape.id,
+    x: shape.x - 18, y: shape.y - 18, width: widthPx + 36, height: heightPx + 52, class: 'door-hit-area', 'data-shape-id': shape.id,
   }));
   group.appendChild(createSvgEl('line', {
-    x1: shape.x, y1: shape.y, x2: shape.x, y2: shape.y + heightPx, class: 'door-guide-line', 'data-shape-id': shape.id,
+    x1: shape.x, y1: bottomY, x2: shape.x + widthPx, y2: bottomY, class: 'door-guide-line', 'data-shape-id': shape.id,
   }));
   group.appendChild(createSvgEl('line', {
-    x1: shape.x + widthPx, y1: shape.y, x2: shape.x + widthPx, y2: shape.y + heightPx, class: 'door-guide-line', 'data-shape-id': shape.id,
+    x1: shape.x, y1: shape.y, x2: shape.x, y2: bottomY, class: 'door-guide-line', 'data-shape-id': shape.id,
   }));
   group.appendChild(createSvgEl('line', {
-    x1: shape.x, y1: shape.y + heightPx, x2: shape.x + widthPx, y2: shape.y + heightPx, class: 'door-guide-line', 'data-shape-id': shape.id,
+    x1: shape.x + widthPx, y1: shape.y, x2: shape.x + widthPx, y2: bottomY, class: 'door-guide-line', 'data-shape-id': shape.id,
   }));
-  const leftPath = `M ${shape.x} ${shape.y} A ${halfWidth} ${heightPx} 0 0 1 ${shape.x + halfWidth} ${shape.y + heightPx}`;
-  const rightPath = `M ${shape.x + halfWidth} ${shape.y + heightPx} A ${halfWidth} ${heightPx} 0 0 1 ${shape.x + widthPx} ${shape.y}`;
+  const leftPath = `M ${shape.x} ${shape.y} A ${halfWidth} ${heightPx} 0 0 1 ${midX} ${bottomY}`;
+  const rightPath = `M ${midX} ${bottomY} A ${halfWidth} ${heightPx} 0 0 1 ${shape.x + widthPx} ${shape.y}`;
   group.appendChild(createSvgEl('path', { d: leftPath, class: 'door-arc', 'data-shape-id': shape.id }));
   group.appendChild(createSvgEl('path', { d: rightPath, class: 'door-arc', 'data-shape-id': shape.id }));
   layer.appendChild(group);
+}
+
+
+function getReadableAngle(degrees) {
+  let angle = ((degrees % 360) + 360) % 360;
+  if (angle > 180) angle -= 360;
+  if (angle > 90) angle -= 180;
+  if (angle < -90) angle += 180;
+  return angle;
+}
+
+function drawFaceDimensionLabels(layer, shape) {
+  const { widthPx, heightPx, centerX, centerY, rotation } = getFaceMetrics(shape);
+  const inset = 18;
+  const topCenterLocal = { x: centerX, y: shape.y + inset };
+  const rightCenterLocal = { x: shape.x + widthPx - inset, y: centerY };
+  const topCenter = rotatePoint(topCenterLocal, { x: centerX, y: centerY }, rotation);
+  const rightCenter = rotatePoint(rightCenterLocal, { x: centerX, y: centerY }, rotation);
+  const topAngle = getReadableAngle(rotation);
+  const rightAngle = getReadableAngle(rotation + 90);
+  appendText(layer, topCenter.x, topCenter.y, 'dimension-text', `${Math.round(shape.widthCm)}`, topAngle, topCenter.x, topCenter.y);
+  appendText(layer, rightCenter.x, rightCenter.y, 'dimension-text', `${Math.round(shape.heightCm)}`, rightAngle, rightCenter.x, rightCenter.y);
 }
 
 export function renderScene() {
@@ -129,7 +153,7 @@ export function renderScene() {
 
   appState.project.shapes.forEach((shape) => {
     if (shape.type === 'face') {
-      if (shape.metaTool === 'door' || shape.metaTool === 'double-door') {
+      if (shape.metaTool === 'door') {
         drawDoorShape(shapeLayer, shape);
         return;
       }
@@ -174,12 +198,12 @@ export function renderScene() {
     appendHandle(selectionLayer, { cx: rotatePointWorld.x, cy: rotatePointWorld.y, class: 'rotate-handle', 'data-handle': 'rotate', 'data-shape-id': shape.id }, 15, 25);
 
     if (shape.metaTool === 'door' || shape.metaTool === 'double-door') {
-      const proxyPoint = rotatePoint({ x: centerX, y: shape.y + heightPx + 28 }, { x: centerX, y: centerY }, rotation);
+      const proxyPoint = rotatePoint({ x: centerX, y: shape.y + heightPx + 42 }, { x: centerX, y: centerY }, rotation);
       selectionLayer.appendChild(createSvgEl('rect', {
-        x: proxyPoint.x - 18,
-        y: proxyPoint.y - 18,
-        width: 36,
-        height: 36,
+        x: proxyPoint.x - 20,
+        y: proxyPoint.y - 20,
+        width: 40,
+        height: 40,
         class: 'move-proxy-handle',
         'data-handle': 'move-proxy',
         'data-shape-id': shape.id,
@@ -191,13 +215,9 @@ export function renderScene() {
       })).textContent = '□';
     }
 
-    const inset = Math.max(16, Math.min(widthPx, heightPx) * 0.14);
-    const topLocal = { x: centerX, y: shape.y + inset };
-    const rightLocal = { x: shape.x + widthPx - inset, y: centerY };
-    const topPoint = rotatePoint(topLocal, { x: centerX, y: centerY }, rotation);
-    const rightPoint = rotatePoint(rightLocal, { x: centerX, y: centerY }, rotation);
-    appendText(selectionLayer, topPoint.x, topPoint.y, 'dimension-text', `${Math.round(shape.widthCm)}`, rotation, topPoint.x, topPoint.y);
-    appendText(selectionLayer, rightPoint.x, rightPoint.y, 'dimension-text', `${Math.round(shape.heightCm)}`, rotation + 90, rightPoint.x, rightPoint.y);
+    if (!['door', 'double-door'].includes(shape.metaTool)) {
+      drawFaceDimensionLabels(selectionLayer, shape);
+    }
     return;
   }
 

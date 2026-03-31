@@ -12,6 +12,7 @@
   --topbar-height: 76px;
   --footer-height: 116px;
   --secondary-bar-height: 52px;
+  --primary-bar-height: 52px;
 }
 
 * { box-sizing: border-box; }
@@ -115,6 +116,8 @@ body {
   fill: #ffffff;
   stroke: var(--accent);
   stroke-width: 2;
+  rx: 8px;
+  ry: 8px;
 }
 
 .move-proxy-handle-label {
@@ -340,16 +343,17 @@ body {
   position: absolute;
   left: 0;
   right: 0;
-  bottom: 0;
+  bottom: var(--primary-bar-height);
   background: var(--bar);
   transform: translateY(100%);
   opacity: 0;
   pointer-events: none;
   transition: transform 0.22s ease, opacity 0.22s ease;
+  z-index: 1;
 }
 
 .footer-shell.has-selection .secondary-bar {
-  transform: translateY(calc(-1 * var(--secondary-bar-height)));
+  transform: translateY(0);
   opacity: 1;
   pointer-events: auto;
 }
@@ -486,6 +490,7 @@ body {
   :root {
     --footer-height: 122px;
     --secondary-bar-height: 56px;
+    --primary-bar-height: 56px;
   }
 
   .right-toolbar {
@@ -558,5 +563,5 @@ body {
 }
 
 .double-door-icon {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Cpath d='M8 36 L8 12 M40 36 L40 12 M8 36 L40 36 M8 12 A16 24 0 0 1 24 36 M24 36 A16 24 0 0 1 40 12' fill='none' stroke='white' stroke-width='1.5'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Cpath d='M10 30 L38 30 M10 30 L10 16 M38 30 L38 16 M10 16 A14 14 0 0 1 24 30 M24 30 A14 14 0 0 1 38 16' fill='none' stroke='white' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E");
 }
