@@ -83,6 +83,33 @@ function drawDoorShape(layer, shape, extraAttrs = {}) {
   layer.appendChild(group);
 }
 
+
+function drawDoubleDoorShape(layer, shape, extraAttrs = {}) {
+  const { widthPx, heightPx, centerX, centerY, rotation } = getFaceMetrics(shape);
+  const halfWidth = widthPx / 2;
+  const group = createSvgEl('g', {
+    transform: `rotate(${rotation} ${centerX} ${centerY})`,
+    ...extraAttrs,
+  });
+  group.appendChild(createSvgEl('rect', {
+    x: shape.x - 18, y: shape.y - 18, width: widthPx + 36, height: heightPx + 36, class: 'door-hit-area', 'data-shape-id': shape.id,
+  }));
+  group.appendChild(createSvgEl('line', {
+    x1: shape.x, y1: shape.y, x2: shape.x, y2: shape.y + heightPx, class: 'door-guide-line', 'data-shape-id': shape.id,
+  }));
+  group.appendChild(createSvgEl('line', {
+    x1: shape.x + widthPx, y1: shape.y, x2: shape.x + widthPx, y2: shape.y + heightPx, class: 'door-guide-line', 'data-shape-id': shape.id,
+  }));
+  group.appendChild(createSvgEl('line', {
+    x1: shape.x, y1: shape.y + heightPx, x2: shape.x + widthPx, y2: shape.y + heightPx, class: 'door-guide-line', 'data-shape-id': shape.id,
+  }));
+  const leftPath = `M ${shape.x} ${shape.y} A ${halfWidth} ${heightPx} 0 0 1 ${shape.x + halfWidth} ${shape.y + heightPx}`;
+  const rightPath = `M ${shape.x + halfWidth} ${shape.y + heightPx} A ${halfWidth} ${heightPx} 0 0 1 ${shape.x + widthPx} ${shape.y}`;
+  group.appendChild(createSvgEl('path', { d: leftPath, class: 'door-arc', 'data-shape-id': shape.id }));
+  group.appendChild(createSvgEl('path', { d: rightPath, class: 'door-arc', 'data-shape-id': shape.id }));
+  layer.appendChild(group);
+}
+
 export function renderScene() {
   const viewportLayer = document.getElementById('viewportLayer');
   const shapeLayer = document.getElementById('shapeLayer');
@@ -102,8 +129,12 @@ export function renderScene() {
 
   appState.project.shapes.forEach((shape) => {
     if (shape.type === 'face') {
-      if (shape.metaTool === 'door') {
+      if (shape.metaTool === 'door' || shape.metaTool === 'double-door') {
         drawDoorShape(shapeLayer, shape);
+        return;
+      }
+      if (shape.metaTool === 'double-door') {
+        drawDoubleDoorShape(shapeLayer, shape);
         return;
       }
       const { widthPx, heightPx, centerX, centerY, rotation } = getFaceMetrics(shape);
@@ -142,7 +173,7 @@ export function renderScene() {
     const rotatePointWorld = rotatePoint({ x: centerX, y: shape.y - 42 }, { x: centerX, y: centerY }, rotation);
     appendHandle(selectionLayer, { cx: rotatePointWorld.x, cy: rotatePointWorld.y, class: 'rotate-handle', 'data-handle': 'rotate', 'data-shape-id': shape.id }, 15, 25);
 
-    if (shape.metaTool === 'door') {
+    if (shape.metaTool === 'door' || shape.metaTool === 'double-door') {
       const proxyPoint = rotatePoint({ x: centerX, y: shape.y + heightPx + 28 }, { x: centerX, y: centerY }, rotation);
       selectionLayer.appendChild(createSvgEl('rect', {
         x: proxyPoint.x - 18,
@@ -198,6 +229,12 @@ export function drawToolPreview(layer) {
   if (drag.tool === 'door') {
     const previewShape = { type: 'face', metaTool: 'door', x: drag.previewPoint.x, y: drag.previewPoint.y, widthCm: 100, heightCm: 100, rotation: 0 };
     drawDoorShape(layer, previewShape, { class: 'tool-preview-group' });
+    return;
+  }
+
+  if (drag.tool === 'double-door') {
+    const previewShape = { type: 'face', metaTool: 'double-door', x: drag.previewPoint.x, y: drag.previewPoint.y, widthCm: 180, heightCm: 90, rotation: 0 };
+    drawDoubleDoorShape(layer, previewShape, { class: 'tool-preview-group' });
     return;
   }
 

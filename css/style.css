@@ -221,47 +221,51 @@ body {
 .door-icon::before {
   content: "";
   position: absolute;
-  left: 5px;
-  top: 5px;
+  left: 7px;
+  top: 4px;
   width: 1px;
   height: 30px;
   background: #fff;
+  box-shadow: 30px 0 0 #fff;
 }
 
 .door-icon::after {
   content: "";
   position: absolute;
-  left: 5px;
-  top: 5px;
+  left: 7px;
+  top: 4px;
   width: 30px;
   height: 30px;
-  border-top: 1px solid #fff;
-  border-right: 1px solid transparent;
-  border-bottom: 1px solid transparent;
-  border-left: 1px solid transparent;
-  border-top-left-radius: 0;
-  border-top-right-radius: 30px;
-  border-bottom-left-radius: 30px;
-  border-bottom-right-radius: 0;
-  transform: rotate(90deg);
-  clip-path: inset(0 0 0 0);
+  border: 1px solid transparent;
+  border-right-color: #fff;
+  border-bottom-color: #fff;
+  border-radius: 0 30px 30px 0;
 }
 
+.double-door-icon {
+  width: 44px;
+  height: 42px;
+}
 
-.double-door-icon::before,
+.double-door-icon::before {
+  content: "";
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  bottom: 6px;
+  height: 1px;
+  background: #fff;
+}
+
 .double-door-icon::after {
   content: "";
   position: absolute;
-  width: 18px;
-  height: 18px;
-  bottom: 2px;
-  border-bottom: 1px solid #fff;
-  border-left: 1px solid #fff;
-  border-top-left-radius: 20px;
+  inset: 0;
+  background:
+    radial-gradient(circle at 4px 4px, transparent 26px, transparent 26px),
+    none;
 }
 
-.double-door-icon::before { left: 2px; }
-.double-door-icon::after { right: 2px; transform: scaleX(-1); }
 
 .garage-icon::before {
   content: "";
@@ -505,4 +509,54 @@ body {
   }
 
   .topbar-spacer { display: none; }
+}
+
+.double-door-icon {
+  border-left: 1px solid #fff;
+  border-right: 1px solid #fff;
+  border-bottom: 1px solid #fff;
+  border-top: none;
+  border-radius: 0;
+}
+
+.double-door-icon {
+  background:
+    radial-gradient(circle at left bottom, transparent 26px, transparent 26px),
+    radial-gradient(circle at right bottom, transparent 26px, transparent 26px);
+}
+
+.double-door-icon::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  top: 2px;
+  bottom: 7px;
+  background:
+    radial-gradient(ellipse at 0% 100%, transparent 0 63%, transparent 63%, #fff 64%, #fff 66%, transparent 67%) left bottom / 50% 100% no-repeat,
+    radial-gradient(ellipse at 100% 100%, transparent 0 63%, transparent 63%, #fff 64%, #fff 66%, transparent 67%) right bottom / 50% 100% no-repeat;
+}
+
+
+/* icoon overrides fase 7 */
+.door-icon,
+.double-door-icon {
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+}
+
+.door-icon::before,
+.door-icon::after,
+.double-door-icon::before,
+.double-door-icon::after {
+  content: none;
+}
+
+.door-icon {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Cpath d='M10 8 L10 38 M10 8 L40 8 M40 8 A30 30 0 0 1 10 38' fill='none' stroke='white' stroke-width='1.5'/%3E%3C/svg%3E");
+}
+
+.double-door-icon {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Cpath d='M8 36 L8 12 M40 36 L40 12 M8 36 L40 36 M8 12 A16 24 0 0 1 24 36 M24 36 A16 24 0 0 1 40 12' fill='none' stroke='white' stroke-width='1.5'/%3E%3C/svg%3E");
 }

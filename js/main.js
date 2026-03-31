@@ -308,7 +308,7 @@ function updateSelectionUI() {
   const shape = getSelectedShape();
   topbar.classList.toggle('hidden', !shape);
   footerShell?.classList.toggle('has-selection', Boolean(shape));
-  topbar.classList.toggle('door-single-mode', Boolean(shape?.type === 'face' && shape.metaTool === 'door'));
+  topbar.classList.toggle('door-single-mode', Boolean(shape?.type === 'face' && ['door', 'double-door'].includes(shape.metaTool)));
 
   if (!shape) return;
 
@@ -317,9 +317,9 @@ function updateSelectionUI() {
     widthInput.value = String(Math.round(shape.widthCm));
     widthUnit.textContent = 'cm';
 
-    if (shape.metaTool === 'door') {
+    if (shape.metaTool === 'door' || shape.metaTool === 'double-door') {
       heightInput.disabled = true;
-      heightInput.value = String(Math.round(shape.widthCm));
+      heightInput.value = String(Math.round(shape.heightCm));
       heightUnit.textContent = 'cm';
       return;
     }

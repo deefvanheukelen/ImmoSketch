@@ -1,5 +1,5 @@
 export const appState = {
-  selectedTool: 'square',
+  selectedTool: '',
   counters: {
     face: 0,
     line: 0,
@@ -70,13 +70,16 @@ export function createShapeAt(tool, x, y) {
   }
 
   appState.counters.face += 1;
+  const defaultWidthCm = tool === 'door' ? 100 : tool === 'double-door' ? 180 : 400;
+  const defaultHeightCm = tool === 'door' ? 100 : tool === 'double-door' ? 90 : 400;
+
   const face = {
     id: `face-${appState.counters.face}`,
     type: 'face',
     x,
     y,
-    widthCm: tool === 'door' ? 100 : 400,
-    heightCm: tool === 'door' ? 100 : 400,
+    widthCm: defaultWidthCm,
+    heightCm: defaultHeightCm,
     rotation: 0,
     metaTool: tool,
   };
@@ -96,6 +99,14 @@ export function updateSelectedShapeDimensions(widthValue, heightValue) {
       shape.heightCm = size;
       return shape;
     }
+
+    if (shape.metaTool === 'double-door') {
+      const size = Math.max(1, widthValue);
+      shape.widthCm = size;
+      shape.heightCm = Math.max(1, size / 2);
+      return shape;
+    }
+
     shape.widthCm = Math.max(1, widthValue);
     shape.heightCm = Math.max(1, heightValue);
     return shape;
