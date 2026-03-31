@@ -11,7 +11,7 @@
   --outline: #111111;
   --topbar-height: 76px;
   --footer-height: 116px;
-  --primary-bar-height: 58px;
+  --secondary-bar-height: 52px;
 }
 
 * { box-sizing: border-box; }
@@ -266,30 +266,30 @@ body {
   align-items: center;
   gap: 12px;
   padding: 10px 16px;
-  min-height: var(--primary-bar-height);
   overflow-x: auto;
 }
 
 .secondary-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
   background: var(--bar);
-  position: relative;
-  z-index: 1;
-  margin-bottom: calc(-1 * var(--primary-bar-height));
-  transform: translateY(calc(var(--primary-bar-height) + 8px));
+  transform: translateY(100%);
   opacity: 0;
   pointer-events: none;
   transition: transform 0.22s ease, opacity 0.22s ease;
 }
 
 .footer-shell.has-selection .secondary-bar {
-  transform: translateY(0);
+  transform: translateY(calc(-1 * var(--secondary-bar-height)));
   opacity: 1;
   pointer-events: auto;
 }
 
 .primary-bar {
-  background: var(--bar-dark);
   position: relative;
+  background: var(--bar-dark);
   z-index: 2;
 }
 
@@ -316,7 +316,7 @@ body {
 
 .line-hit-area {
   stroke: rgba(0, 0, 0, 0);
-  stroke-width: 34;
+  stroke-width: 32;
   stroke-linecap: round;
 }
 
@@ -326,31 +326,31 @@ body {
   stroke-width: 2;
 }
 
-.handle-hit-area {
-  fill: rgba(255, 255, 255, 0.001);
-  stroke: rgba(0, 0, 0, 0);
-  pointer-events: all;
-}
-
 .rotate-handle,
 .resize-handle,
 .endpoint-handle {
   fill: #ffffff;
   stroke: var(--accent);
-  stroke-width: 2.5;
+  stroke-width: 2;
 }
 
 .rotate-handle { fill: #dff9e3; }
 
+.handle-hit-area {
+  fill: rgba(0, 0, 0, 0);
+  stroke: rgba(0, 0, 0, 0);
+  pointer-events: all;
+}
+
 .snap-guide {
-  stroke: rgba(29, 207, 61, 0.65);
-  stroke-width: 1;
+  stroke: rgba(29, 207, 61, 0.75);
+  stroke-width: 1.5;
   stroke-dasharray: 6 6;
 }
 
 .dimension-text {
   fill: var(--accent);
-  font-size: 28px;
+  font-size: 24px;
   font-weight: 700;
   pointer-events: none;
   text-anchor: middle;
@@ -359,7 +359,7 @@ body {
 
 .line-dimension-text {
   fill: var(--accent);
-  font-size: 24px;
+  font-size: 22px;
   font-weight: 700;
   pointer-events: none;
   text-anchor: middle;
@@ -408,7 +408,10 @@ body {
 }
 
 @media (max-width: 760px) {
-  :root { --footer-height: 122px; }
+  :root {
+    --footer-height: 122px;
+    --secondary-bar-height: 56px;
+  }
 
   .workspace {
     grid-template-columns: 1fr;

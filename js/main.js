@@ -24,7 +24,6 @@ import {
 
 const toast = document.getElementById('toast');
 const topbar = document.getElementById('topbar');
-const footerShell = document.querySelector('.footer-shell');
 const widthInput = document.getElementById('widthInput');
 const heightInput = document.getElementById('heightInput');
 const widthUnit = document.getElementById('widthUnit');
@@ -32,6 +31,7 @@ const heightUnit = document.getElementById('heightUnit');
 const applyDimensionsBtn = document.getElementById('applyDimensionsBtn');
 const planCanvas = document.getElementById('planCanvas');
 const canvasStage = document.getElementById('canvasStage');
+const footerShell = document.getElementById('footerShell');
 const toolButtons = [...document.querySelectorAll('.tool-btn')];
 const actionButtons = [...document.querySelectorAll('.action-btn')];
 const dimensionInputs = [widthInput, heightInput];
@@ -42,7 +42,6 @@ let pinchStart = null;
 let dragState = null;
 let toolbarDrag = null;
 const TAP_PAN_THRESHOLD = 8;
-
 const OPPOSITE_CORNERS = { nw: 'se', ne: 'sw', se: 'nw', sw: 'ne' };
 
 function showToast(message) {
@@ -70,8 +69,32 @@ function inverseRotatePoint(point, center, degrees) {
   return rotatePoint(point, center, -degrees);
 }
 
-function midpoint(a, b) {
-  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+function normalizeDegrees(value) {
+  return ((value % 360) + 360) % 360;
+}
+
+function getLineAngle(shape) {
+  return normalizeDegrees((Math.atan2(shape.y2 - shape.y1, shape.x2 - shape.x1) * 180) / Math.PI);
+}
+
+function snapAngle(degrees) {
+  const step = appState.project.settings.rotateSnapDeg;
+  const threshold = appState.project.settings.rotateSnapThresholdDeg;
+  const normalized = normalizeDegrees(degrees);
+  const snapped = Math.round(normalized / step) * step;
+  const diff = Math.abs(snapped - normalized);
+  const wrappedDiff = Math.min(diff, 360 - diff);
+  return wrappedDiff <= threshold ? normalizeDegrees(snapped) : normalized;
+}
+
+function getSvgPoint(clientX, clientY) {
+  const rect = planCanvas.getBoundingClientRect();
+  const baseX = ((clientX - rect.left) / rect.width) * appState.viewport.baseWidth;
+  const baseY = ((clientY - rect.top) / rect.height) * appState.viewport.baseHeight;
+  return {
+    x: (baseX - appState.viewport.panX) / appState.viewport.zoom,
+    y: (baseY - appState.viewport.panY) / appState.viewport.zoom,
+  };
 }
 
 function getFaceCorners(shape) {
@@ -86,18 +109,190 @@ function getFaceCorners(shape) {
   };
 }
 
-function syncTopbarWithSelection() {
-  const shape = getSelectedShape();
-  const hasSelection = Boolean(shape);
-
-  topbar.classList.toggle('hidden', !hasSelection);
-  if (footerShell) {
-    footerShell.classList.toggle('has-selection', hasSelection);
+function getShapeSnapData(shape) {
+  if (shape.type === 'line') {
+    const centerX = (shape.x1 + shape.x2) / 2;
+    const centerY = (shape.y1 + shape.y2) / 2;
+    return {
+      points: [
+        { x: shape.x1, y: shape.y1 },
+        { x: shape.x2, y: shape.y2 },
+        { x: centerX, y: centerY },
+      ],
+      xValues: [shape.x1, shape.x2, centerX],
+      yValues: [shape.y1, shape.y2, centerY],
+      bounds: {
+        left: Math.min(shape.x1, shape.x2),
+        right: Math.max(shape.x1, shape.x2),
+        top: Math.min(shape.y1, shape.y2),
+        bottom: Math.max(shape.y1, shape.y2),
+      },
+    };
   }
 
-  if (!shape) {
+  const corners = getFaceCorners(shape);
+  const points = [corners.nw, corners.ne, corners.se, corners.sw, corners.center];
+  const xs = points.map((point) => point.x);
+  const ys = points.map((point) => point.y);
+  return {
+    points,
+    xValues: [Math.min(...xs), corners.center.x, Math.max(...xs)],
+    yValues: [Math.min(...ys), corners.center.y, Math.max(...ys)],
+    bounds: {
+      left: Math.min(...xs),
+      right: Math.max(...xs),
+      top: Math.min(...ys),
+      bottom: Math.max(...ys),
+    },
+  };
+}
+
+function rangesOverlap(startA, endA, startB, endB, tolerance = 6) {
+  return Math.min(endA, endB) >= Math.max(startA, startB) - tolerance;
+}
+
+function collectSnapTargets(excludeShapeId = null) {
+  return appState.project.shapes
+    .filter((shape) => shape.id !== excludeShapeId)
+    .map((shape) => ({ shape, ...getShapeSnapData(shape) }));
+}
+
+function snapCoordinate(value, candidates, threshold) {
+  let best = value;
+  let bestDistance = threshold + 1;
+  candidates.forEach((candidate) => {
+    const distance = Math.abs(candidate - value);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = candidate;
+    }
+  });
+  return bestDistance <= threshold ? best : value;
+}
+
+function getSnappedPoint(point, excludeShapeId = null) {
+  const threshold = appState.project.settings.snapThresholdPx;
+  const targets = collectSnapTargets(excludeShapeId);
+  const xCandidates = targets.flatMap((target) => target.xValues);
+  const yCandidates = targets.flatMap((target) => target.yValues);
+
+  const snappedX = snapCoordinate(point.x, xCandidates, threshold);
+  const snappedY = snapCoordinate(point.y, yCandidates, threshold);
+  const lines = [];
+  if (snappedX !== point.x) lines.push({ x1: snappedX, y1: -4000, x2: snappedX, y2: 4000 });
+  if (snappedY !== point.y) lines.push({ x1: -4000, y1: snappedY, x2: 4000, y2: snappedY });
+
+  return { x: snappedX, y: snappedY, lines };
+}
+
+function getBestDelta(sourceValues, candidateValues, threshold) {
+  let bestDelta = 0;
+  let bestDistance = threshold + 1;
+
+  sourceValues.forEach((source) => {
+    candidateValues.forEach((candidate) => {
+      const delta = candidate - source;
+      const distance = Math.abs(delta);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestDelta = delta;
+      }
+    });
+  });
+
+  return bestDistance <= threshold ? bestDelta : 0;
+}
+
+function addGuideLine(lines, orientation, value) {
+  if (orientation === 'x') {
+    lines.push({ x1: value, y1: -4000, x2: value, y2: 4000 });
     return;
   }
+  lines.push({ x1: -4000, y1: value, x2: 4000, y2: value });
+}
+
+function getSnappedMoveDelta(shape, rawDeltaX, rawDeltaY) {
+  const threshold = appState.project.settings.snapThresholdPx;
+  const moving = getShapeSnapData(shape);
+  const targets = collectSnapTargets(shape.id);
+
+  const movedXValues = moving.xValues.map((value) => value + rawDeltaX);
+  const movedYValues = moving.yValues.map((value) => value + rawDeltaY);
+  let deltaX = rawDeltaX + getBestDelta(movedXValues, targets.flatMap((target) => target.xValues), threshold);
+  let deltaY = rawDeltaY + getBestDelta(movedYValues, targets.flatMap((target) => target.yValues), threshold);
+
+  const movedBounds = {
+    left: moving.bounds.left + deltaX,
+    right: moving.bounds.right + deltaX,
+    top: moving.bounds.top + deltaY,
+    bottom: moving.bounds.bottom + deltaY,
+  };
+
+  let bestXMagnet = null;
+  let bestYMagnet = null;
+
+  targets.forEach((target) => {
+    if (rangesOverlap(movedBounds.top, movedBounds.bottom, target.bounds.top, target.bounds.bottom, threshold)) {
+      [
+        target.bounds.left - movedBounds.right,
+        target.bounds.right - movedBounds.left,
+      ].forEach((candidateDelta) => {
+        if (Math.abs(candidateDelta) <= threshold && (bestXMagnet === null || Math.abs(candidateDelta) < Math.abs(bestXMagnet))) {
+          bestXMagnet = candidateDelta;
+        }
+      });
+    }
+
+    if (rangesOverlap(movedBounds.left, movedBounds.right, target.bounds.left, target.bounds.right, threshold)) {
+      [
+        target.bounds.top - movedBounds.bottom,
+        target.bounds.bottom - movedBounds.top,
+      ].forEach((candidateDelta) => {
+        if (Math.abs(candidateDelta) <= threshold && (bestYMagnet === null || Math.abs(candidateDelta) < Math.abs(bestYMagnet))) {
+          bestYMagnet = candidateDelta;
+        }
+      });
+    }
+  });
+
+  if (bestXMagnet !== null) deltaX += bestXMagnet;
+  if (bestYMagnet !== null) deltaY += bestYMagnet;
+
+  const finalBounds = {
+    left: moving.bounds.left + deltaX,
+    right: moving.bounds.right + deltaX,
+    top: moving.bounds.top + deltaY,
+    bottom: moving.bounds.bottom + deltaY,
+  };
+
+  const lines = [];
+  targets.forEach((target) => {
+    if (Math.abs(finalBounds.left - target.bounds.right) <= 0.01) addGuideLine(lines, 'x', target.bounds.right);
+    if (Math.abs(finalBounds.right - target.bounds.left) <= 0.01) addGuideLine(lines, 'x', target.bounds.left);
+    if (Math.abs(finalBounds.top - target.bounds.bottom) <= 0.01) addGuideLine(lines, 'y', target.bounds.bottom);
+    if (Math.abs(finalBounds.bottom - target.bounds.top) <= 0.01) addGuideLine(lines, 'y', target.bounds.top);
+  });
+
+  moving.xValues.map((value) => value + deltaX).forEach((value) => {
+    if (targets.some((target) => target.xValues.some((candidate) => Math.abs(candidate - value) <= 0.01))) {
+      addGuideLine(lines, 'x', value);
+    }
+  });
+  moving.yValues.map((value) => value + deltaY).forEach((value) => {
+    if (targets.some((target) => target.yValues.some((candidate) => Math.abs(candidate - value) <= 0.01))) {
+      addGuideLine(lines, 'y', value);
+    }
+  });
+
+  return { deltaX, deltaY, lines };
+}
+
+function updateSelectionUI() {
+  const shape = getSelectedShape();
+  topbar.classList.toggle('hidden', !shape);
+  footerShell?.classList.toggle('has-selection', Boolean(shape));
+
+  if (!shape) return;
 
   if (shape.type === 'face') {
     widthInput.disabled = false;
@@ -184,7 +379,7 @@ function applyDimensionChanges() {
     return;
   }
 
-  syncTopbarWithSelection();
+  updateSelectionUI();
   renderScene();
   showToast('Afmetingen aangepast');
 }
@@ -209,7 +404,7 @@ function bindActionButtons() {
     button.addEventListener('click', () => {
       if (button.id === 'deleteBtn') {
         const removed = deleteSelectedShape();
-        syncTopbarWithSelection();
+        updateSelectionUI();
         renderScene();
         showToast(removed ? 'Element verwijderd' : 'Niets geselecteerd');
         return;
@@ -217,7 +412,7 @@ function bindActionButtons() {
 
       if (button.id === 'duplicateBtn') {
         const clone = duplicateSelectedShape();
-        syncTopbarWithSelection();
+        updateSelectionUI();
         renderScene();
         showToast(clone ? 'Element gedupliceerd' : 'Niets geselecteerd');
         return;
@@ -226,250 +421,6 @@ function bindActionButtons() {
       showToast(`${button.textContent} is nog een placeholder`);
     });
   });
-}
-
-function getSvgPoint(clientX, clientY) {
-  const rect = planCanvas.getBoundingClientRect();
-  const baseX = ((clientX - rect.left) / rect.width) * appState.viewport.baseWidth;
-  const baseY = ((clientY - rect.top) / rect.height) * appState.viewport.baseHeight;
-  return {
-    x: (baseX - appState.viewport.panX) / appState.viewport.zoom,
-    y: (baseY - appState.viewport.panY) / appState.viewport.zoom,
-  };
-}
-
-function distanceBetween(a, b) {
-  return Math.hypot(a.x - b.x, a.y - b.y);
-}
-
-function projectPointOnSegment(point, line) {
-  const dx = line.x2 - line.x1;
-  const dy = line.y2 - line.y1;
-  const lengthSq = dx * dx + dy * dy;
-  if (!lengthSq) {
-    return { x: line.x1, y: line.y1, t: 0 };
-  }
-  const t = ((point.x - line.x1) * dx + (point.y - line.y1) * dy) / lengthSq;
-  const clampedT = Math.max(0, Math.min(1, t));
-  return {
-    x: line.x1 + dx * clampedT,
-    y: line.y1 + dy * clampedT,
-    t: clampedT,
-  };
-}
-
-function pointToGuideLine(point, snappedPoint) {
-  if (distanceBetween(point, snappedPoint) < 0.001) return [];
-  return [{ x1: point.x, y1: point.y, x2: snappedPoint.x, y2: snappedPoint.y }];
-}
-
-function getShapeSnapGeometry(shape) {
-  if (shape.type === 'face') {
-    const corners = getFaceCorners(shape);
-    const topMid = midpoint(corners.nw, corners.ne);
-    const rightMid = midpoint(corners.ne, corners.se);
-    const bottomMid = midpoint(corners.sw, corners.se);
-    const leftMid = midpoint(corners.nw, corners.sw);
-    return {
-      points: [corners.nw, corners.ne, corners.se, corners.sw, topMid, rightMid, bottomMid, leftMid, corners.center],
-      lines: [
-        { x1: corners.nw.x, y1: corners.nw.y, x2: corners.ne.x, y2: corners.ne.y },
-        { x1: corners.ne.x, y1: corners.ne.y, x2: corners.se.x, y2: corners.se.y },
-        { x1: corners.se.x, y1: corners.se.y, x2: corners.sw.x, y2: corners.sw.y },
-        { x1: corners.sw.x, y1: corners.sw.y, x2: corners.nw.x, y2: corners.nw.y },
-      ],
-    };
-  }
-
-  const start = { x: shape.x1, y: shape.y1 };
-  const end = { x: shape.x2, y: shape.y2 };
-  const center = midpoint(start, end);
-  return {
-    points: [start, end, center],
-    lines: [{ x1: shape.x1, y1: shape.y1, x2: shape.x2, y2: shape.y2 }],
-  };
-}
-
-function collectSnapGeometry(excludeShapeId = null) {
-  const points = [];
-  const lines = [];
-
-  appState.project.shapes.forEach((shape) => {
-    if (shape.id === excludeShapeId) return;
-    const geometry = getShapeSnapGeometry(shape);
-    points.push(...geometry.points);
-    lines.push(...geometry.lines);
-  });
-
-  return { points, lines };
-}
-
-function getBestSnapForPoint(point, excludeShapeId = null, threshold = appState.project.settings.snapThresholdPx) {
-  const { points, lines } = collectSnapGeometry(excludeShapeId);
-  let best = {
-    snappedPoint: point,
-    distance: threshold + 1,
-    lines: [],
-  };
-
-  points.forEach((candidate) => {
-    const distance = distanceBetween(point, candidate);
-    if (distance < best.distance) {
-      best = {
-        snappedPoint: { x: candidate.x, y: candidate.y },
-        distance,
-        lines: pointToGuideLine(point, candidate),
-      };
-    }
-  });
-
-  lines.forEach((candidate) => {
-    const projected = projectPointOnSegment(point, candidate);
-    const distance = distanceBetween(point, projected);
-    if (distance < best.distance) {
-      best = {
-        snappedPoint: { x: projected.x, y: projected.y },
-        distance,
-        lines: [candidate, ...pointToGuideLine(point, projected)],
-      };
-    }
-  });
-
-  if (best.distance <= threshold) {
-    return {
-      x: best.snappedPoint.x,
-      y: best.snappedPoint.y,
-      lines: best.lines,
-    };
-  }
-
-  return { x: point.x, y: point.y, lines: [] };
-}
-
-function getSnappedPoint(point, excludeShapeId = null) {
-  return getBestSnapForPoint(point, excludeShapeId);
-}
-
-function getMovedAnchorPoints(shape, deltaX, deltaY) {
-  const geometry = getShapeSnapGeometry(shape);
-  return geometry.points.map((point) => ({ x: point.x + deltaX, y: point.y + deltaY }));
-}
-
-function getProjectedRangeOnAxis(line, axis) {
-  const start = line.x1 * axis.x + line.y1 * axis.y;
-  const end = line.x2 * axis.x + line.y2 * axis.y;
-  return { min: Math.min(start, end), max: Math.max(start, end) };
-}
-
-function getParallelLineSnap(lineA, lineB, threshold) {
-  const dxA = lineA.x2 - lineA.x1;
-  const dyA = lineA.y2 - lineA.y1;
-  const dxB = lineB.x2 - lineB.x1;
-  const dyB = lineB.y2 - lineB.y1;
-  const lengthA = Math.hypot(dxA, dyA);
-  const lengthB = Math.hypot(dxB, dyB);
-
-  if (!lengthA || !lengthB) return null;
-
-  const axisA = { x: dxA / lengthA, y: dyA / lengthA };
-  const axisB = { x: dxB / lengthB, y: dyB / lengthB };
-  const cross = Math.abs(axisA.x * axisB.y - axisA.y * axisB.x);
-  if (cross > 0.18) return null;
-
-  const normal = { x: -axisB.y, y: axisB.x };
-  const midpointA = { x: (lineA.x1 + lineA.x2) / 2, y: (lineA.y1 + lineA.y2) / 2 };
-  const midpointB = { x: (lineB.x1 + lineB.x2) / 2, y: (lineB.y1 + lineB.y2) / 2 };
-  const perpendicularOffset = ((midpointA.x - midpointB.x) * normal.x) + ((midpointA.y - midpointB.y) * normal.y);
-  const distance = Math.abs(perpendicularOffset);
-  if (distance > threshold) return null;
-
-  const rangeA = getProjectedRangeOnAxis(lineA, axisB);
-  const rangeB = getProjectedRangeOnAxis(lineB, axisB);
-  const overlap = Math.min(rangeA.max, rangeB.max) - Math.max(rangeA.min, rangeB.min);
-  if (overlap < -threshold) return null;
-
-  const delta = {
-    x: -normal.x * perpendicularOffset,
-    y: -normal.y * perpendicularOffset,
-  };
-
-  return {
-    deltaX: delta.x,
-    deltaY: delta.y,
-    distance,
-    lines: [lineB, { x1: midpointA.x, y1: midpointA.y, x2: midpointA.x + delta.x, y2: midpointA.y + delta.y }],
-  };
-}
-
-function getMagneticMoveSnap(shape, rawDeltaX, rawDeltaY) {
-  const threshold = appState.project.settings.moveSnapThresholdPx ?? appState.project.settings.snapThresholdPx;
-  const anchors = getMovedAnchorPoints(shape, rawDeltaX, rawDeltaY);
-  const movedGeometry = getShapeSnapGeometry(shape);
-  const movedLines = movedGeometry.lines.map((line) => ({
-    x1: line.x1 + rawDeltaX,
-    y1: line.y1 + rawDeltaY,
-    x2: line.x2 + rawDeltaX,
-    y2: line.y2 + rawDeltaY,
-  }));
-  const staticGeometry = collectSnapGeometry(shape.id);
-
-  let best = {
-    deltaX: rawDeltaX,
-    deltaY: rawDeltaY,
-    distance: threshold + 1,
-    lines: [],
-  };
-
-  anchors.forEach((anchor) => {
-    const snapped = getBestSnapForPoint(anchor, shape.id, threshold);
-    const distance = distanceBetween(anchor, { x: snapped.x, y: snapped.y });
-    if (distance < best.distance) {
-      best = {
-        deltaX: rawDeltaX + (snapped.x - anchor.x),
-        deltaY: rawDeltaY + (snapped.y - anchor.y),
-        distance,
-        lines: snapped.lines,
-      };
-    }
-  });
-
-  movedLines.forEach((movedLine) => {
-    staticGeometry.lines.forEach((candidateLine) => {
-      const lineSnap = getParallelLineSnap(movedLine, candidateLine, threshold);
-      if (lineSnap && lineSnap.distance < best.distance) {
-        best = {
-          deltaX: rawDeltaX + lineSnap.deltaX,
-          deltaY: rawDeltaY + lineSnap.deltaY,
-          distance: lineSnap.distance,
-          lines: lineSnap.lines,
-        };
-      }
-    });
-  });
-
-  if (best.distance <= threshold) {
-    return { deltaX: best.deltaX, deltaY: best.deltaY, lines: best.lines };
-  }
-
-  return { deltaX: rawDeltaX, deltaY: rawDeltaY, lines: [] };
-}
-
-function normalizeDegrees(value) {
-  return ((value % 360) + 360) % 360;
-}
-
-function snapAngle(degrees) {
-  const step = appState.project.settings.rotateSnapDeg;
-  const threshold = appState.project.settings.rotateSnapThresholdDeg;
-  const normalized = normalizeDegrees(degrees);
-  const snapped = Math.round(normalized / step) * step;
-  const diff = Math.abs(snapped - normalized);
-  const wrappedDiff = Math.min(diff, 360 - diff);
-  return wrappedDiff <= threshold ? normalizeDegrees(snapped) : normalized;
-}
-
-function getLineAngle(shape) {
-  return normalizeDegrees((Math.atan2(shape.y2 - shape.y1, shape.x2 - shape.x1) * 180) / Math.PI);
 }
 
 function startMove(shape, point) {
@@ -513,62 +464,70 @@ function startRotate(shape, point) {
   setActiveHandle('rotate');
 }
 
-function startFaceResize(shape, corner) {
+function startFaceResize(shape, corner, point) {
+  const corners = getFaceCorners(shape);
+  const grabbedCorner = corners[corner];
   dragState = {
     mode: 'resize-face',
     shapeId: shape.id,
     corner,
     original: structuredClone(shape),
-    oppositeCorner: getFaceCorners(shape)[OPPOSITE_CORNERS[corner]],
+    oppositeCorner: corners[OPPOSITE_CORNERS[corner]],
+    pointerOffset: {
+      x: point.x - grabbedCorner.x,
+      y: point.y - grabbedCorner.y,
+    },
   };
   setActiveHandle(`resize-${corner}`);
 }
 
-function startLineEndpointResize(shape, endpoint) {
-  const fixedPoint = endpoint === 'start'
-    ? { x: shape.x2, y: shape.y2 }
-    : { x: shape.x1, y: shape.y1 };
-  const axis = (() => {
-    const dx = shape.x2 - shape.x1;
-    const dy = shape.y2 - shape.y1;
-    const length = Math.hypot(dx, dy) || 1;
-    return { x: dx / length, y: dy / length };
-  })();
+function startLineEndpointResize(shape, endpoint, point) {
+  const endpointPoint = endpoint === 'start'
+    ? { x: shape.x1, y: shape.y1 }
+    : { x: shape.x2, y: shape.y2 };
 
   dragState = {
     mode: 'line-endpoint',
     shapeId: shape.id,
     endpoint,
     original: structuredClone(shape),
-    fixedPoint,
-    axis,
+    pointerOffset: {
+      x: point.x - endpointPoint.x,
+      y: point.y - endpointPoint.y,
+    },
+    fixedPoint: endpoint === 'start'
+      ? { x: shape.x2, y: shape.y2 }
+      : { x: shape.x1, y: shape.y1 },
+    originalAngleRad: Math.atan2(shape.y2 - shape.y1, shape.x2 - shape.x1),
   };
   setActiveHandle(`line-${endpoint}`);
 }
 
-function getAxisLockedPoint(rawPoint, fixedPoint, axis) {
+function applyAxisLock(rawPoint, fixedPoint, originalAngleRad) {
+  const axisX = Math.cos(originalAngleRad);
+  const axisY = Math.sin(originalAngleRad);
   const dx = rawPoint.x - fixedPoint.x;
   const dy = rawPoint.y - fixedPoint.y;
-  const parallel = dx * axis.x + dy * axis.y;
-  const perpendicular = dx * (-axis.y) + dy * axis.x;
-  const perpendicularAbs = Math.abs(perpendicular);
-  const parallelAbs = Math.abs(parallel);
-  const hardThreshold = appState.project.settings.lineAxisLockThresholdPx ?? 18;
-  const releaseFactor = 0.42;
+  const along = dx * axisX + dy * axisY;
+  const perp = -dx * axisY + dy * axisX;
+  const lockThreshold = 18;
 
-  if (perpendicularAbs <= hardThreshold || perpendicularAbs <= parallelAbs * releaseFactor) {
+  if (Math.abs(perp) <= lockThreshold) {
     return {
-      x: fixedPoint.x + axis.x * parallel,
-      y: fixedPoint.y + axis.y * parallel,
-      locked: true,
+      x: fixedPoint.x + axisX * along,
+      y: fixedPoint.y + axisY * along,
     };
   }
 
-  return {
-    x: rawPoint.x,
-    y: rawPoint.y,
-    locked: false,
-  };
+  const angleDeg = Math.abs((originalAngleRad * 180) / Math.PI) % 180;
+  if ((angleDeg < 12 || angleDeg > 168) && Math.abs(dy) <= lockThreshold * 1.2) {
+    return { x: rawPoint.x, y: fixedPoint.y };
+  }
+  if (Math.abs(angleDeg - 90) < 12 && Math.abs(dx) <= lockThreshold * 1.2) {
+    return { x: fixedPoint.x, y: rawPoint.y };
+  }
+
+  return rawPoint;
 }
 
 function updateToolPreview(clientX, clientY, tool) {
@@ -584,7 +543,7 @@ function placeElement(tool, clientX, clientY) {
   const snapped = getSnappedPoint(point);
   setSnapLines(snapped.lines);
   const shape = createShapeAt(tool, snapped.x, snapped.y);
-  syncTopbarWithSelection();
+  updateSelectionUI();
   renderScene();
   showToast(`Element geplaatst: ${shape.type === 'line' ? 'lijn' : tool}`);
   window.setTimeout(() => {
@@ -599,7 +558,7 @@ function trySelectShape(target) {
   const shape = getShapeById(shapeId);
   if (!shape) return null;
   setSelection({ type: shape.type, id: shape.id });
-  syncTopbarWithSelection();
+  updateSelectionUI();
   renderScene();
   return shape;
 }
@@ -633,7 +592,7 @@ function bindCanvasPointerEvents() {
     if (event.target?.dataset?.handle === 'resize-face') {
       const shape = getShapeById(event.target.dataset.shapeId);
       if (shape) {
-        startFaceResize(shape, event.target.dataset.corner);
+        startFaceResize(shape, event.target.dataset.corner, point);
         return;
       }
     }
@@ -641,7 +600,7 @@ function bindCanvasPointerEvents() {
     if (event.target?.dataset?.handle === 'line-endpoint') {
       const shape = getShapeById(event.target.dataset.shapeId);
       if (shape) {
-        startLineEndpointResize(shape, event.target.dataset.endpoint);
+        startLineEndpointResize(shape, event.target.dataset.endpoint, point);
         return;
       }
     }
@@ -671,9 +630,7 @@ function bindCanvasPointerEvents() {
 
     if (dragState.mode === 'pan-ready' || dragState.mode === 'pan') {
       const distance = Math.hypot(event.clientX - dragState.startClientX, event.clientY - dragState.startClientY);
-      if (dragState.mode === 'pan-ready' && distance <= TAP_PAN_THRESHOLD) {
-        return;
-      }
+      if (dragState.mode === 'pan-ready' && distance <= TAP_PAN_THRESHOLD) return;
       dragState.mode = 'pan';
       dragState.moved = true;
       const deltaX = event.clientX - dragState.lastClientX;
@@ -693,10 +650,10 @@ function bindCanvasPointerEvents() {
       Object.assign(shape, structuredClone(dragState.original));
       const rawDeltaX = point.x - dragState.startPoint.x;
       const rawDeltaY = point.y - dragState.startPoint.y;
-      const snapped = getMagneticMoveSnap(shape, rawDeltaX, rawDeltaY);
+      const snapped = getSnappedMoveDelta(shape, rawDeltaX, rawDeltaY);
       moveShapeBy(shape, snapped.deltaX, snapped.deltaY);
       setSnapLines(snapped.lines);
-      syncTopbarWithSelection();
+      updateSelectionUI();
       renderScene();
       return;
     }
@@ -711,25 +668,33 @@ function bindCanvasPointerEvents() {
       if (shape.type === 'line') rotateLineTo(shape, targetDeg);
       else rotateFaceTo(shape, targetDeg);
       setSnapLines([]);
-      syncTopbarWithSelection();
+      updateSelectionUI();
       renderScene();
       return;
     }
 
     if (dragState.mode === 'line-endpoint') {
       Object.assign(shape, structuredClone(dragState.original));
-      const axisLocked = getAxisLockedPoint(point, dragState.fixedPoint, dragState.axis);
-      const snapped = getSnappedPoint({ x: axisLocked.x, y: axisLocked.y }, shape.id);
+      let rawPoint = {
+        x: point.x - dragState.pointerOffset.x,
+        y: point.y - dragState.pointerOffset.y,
+      };
+      rawPoint = applyAxisLock(rawPoint, dragState.fixedPoint, dragState.originalAngleRad);
+      const snapped = getSnappedPoint(rawPoint, shape.id);
       updateLineEndpoint(shape, dragState.endpoint === 'start' ? 'start' : 'end', snapped.x, snapped.y);
       setSnapLines(snapped.lines);
-      syncTopbarWithSelection();
+      updateSelectionUI();
       renderScene();
       return;
     }
 
     if (dragState.mode === 'resize-face') {
       Object.assign(shape, structuredClone(dragState.original));
-      const snapped = getSnappedPoint(point, shape.id);
+      const rawPoint = {
+        x: point.x - dragState.pointerOffset.x,
+        y: point.y - dragState.pointerOffset.y,
+      };
+      const snapped = getSnappedPoint(rawPoint, shape.id);
       const rotation = shape.rotation ?? 0;
       const fixedCorner = dragState.oppositeCorner;
       const newCenter = {
@@ -742,7 +707,7 @@ function bindCanvasPointerEvents() {
       const heightPx = Math.max(20, Math.abs(draggedLocal.y - fixedLocal.y));
       updateFaceFromPx(shape, newCenter.x - widthPx / 2, newCenter.y - heightPx / 2, widthPx, heightPx);
       setSnapLines(snapped.lines);
-      syncTopbarWithSelection();
+      updateSelectionUI();
       renderScene();
     }
   });
@@ -755,19 +720,15 @@ function bindCanvasPointerEvents() {
     if (pointerState.size === 0) {
       if (finishedDrag?.mode === 'pan-ready' && !finishedDrag.moved) {
         clearSelection();
-        syncTopbarWithSelection();
+        updateSelectionUI();
       }
 
       if (finishedDrag?.mode === 'rotate' && finishedDrag.rotateHandleClick) {
         const shape = getShapeById(finishedDrag.shapeId);
         if (shape) {
-          Object.assign(shape, structuredClone(finishedDrag.original));
-          if (shape.type === 'line') {
-            rotateLineTo(shape, finishedDrag.baseRotation + 90);
-          } else {
-            rotateFaceTo(shape, finishedDrag.baseRotation + 90);
-          }
-          syncTopbarWithSelection();
+          if (shape.type === 'line') rotateLineTo(shape, finishedDrag.baseRotation + 90);
+          else rotateFaceTo(shape, finishedDrag.baseRotation + 90);
+          updateSelectionUI();
         }
       }
 
@@ -794,5 +755,5 @@ bindToolButtons();
 bindDimensionControls();
 bindActionButtons();
 bindCanvasPointerEvents();
-syncTopbarWithSelection();
+updateSelectionUI();
 renderScene();

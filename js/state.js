@@ -23,8 +23,6 @@ export const appState = {
       scalePxPerCm: 0.5,
       snapEnabled: true,
       snapThresholdPx: 18,
-      moveSnapThresholdPx: 34,
-      lineAxisLockThresholdPx: 20,
       rotateSnapDeg: 45,
       rotateSnapThresholdDeg: 7,
     },
@@ -180,43 +178,9 @@ export function updateLineEndpoint(shape, endpoint, x, y) {
   shape.y2 = y;
 }
 
-function normalizeDegrees(value) {
-  return ((value % 360) + 360) % 360;
-}
-
-function isQuarterTurnSwap(prevDeg, nextDeg) {
-  const normalizedNext = normalizeDegrees(nextDeg);
-  const roundedNext = Math.round(normalizedNext / 90) * 90;
-  const diffToQuarter = Math.min(Math.abs(roundedNext - normalizedNext), 360 - Math.abs(roundedNext - normalizedNext));
-  if (diffToQuarter > 0.001) return false;
-
-  const prevQuarter = Math.round(normalizeDegrees(prevDeg) / 90) % 4;
-  const nextQuarter = Math.round(normalizedNext / 90) % 4;
-  return (prevQuarter % 2) !== (nextQuarter % 2);
-}
-
 export function rotateFaceTo(shape, degrees) {
   if (!shape || shape.type !== 'face') return;
-
-  const previousRotation = normalizeDegrees(shape.rotation ?? 0);
-  const nextRotation = normalizeDegrees(degrees);
-  const scale = appState.project.settings.scalePxPerCm;
-  const oldWidthPx = shape.widthCm * scale;
-  const oldHeightPx = shape.heightCm * scale;
-  const centerX = shape.x + oldWidthPx / 2;
-  const centerY = shape.y + oldHeightPx / 2;
-
-  if (isQuarterTurnSwap(previousRotation, nextRotation)) {
-    const previousWidthCm = shape.widthCm;
-    shape.widthCm = shape.heightCm;
-    shape.heightCm = previousWidthCm;
-  }
-
-  const newWidthPx = shape.widthCm * scale;
-  const newHeightPx = shape.heightCm * scale;
-  shape.x = centerX - newWidthPx / 2;
-  shape.y = centerY - newHeightPx / 2;
-  shape.rotation = nextRotation;
+  shape.rotation = ((degrees % 360) + 360) % 360;
 }
 
 export function rotateLineTo(shape, degrees) {
