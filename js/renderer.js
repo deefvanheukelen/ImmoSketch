@@ -22,6 +22,20 @@ function rotatePoint(point, center, degrees) {
   };
 }
 
+function midpoint(a, b) {
+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+}
+
+function moveTowards(point, target, distance) {
+  const dx = target.x - point.x;
+  const dy = target.y - point.y;
+  const length = Math.hypot(dx, dy) || 1;
+  return {
+    x: point.x + (dx / length) * distance,
+    y: point.y + (dy / length) * distance,
+  };
+}
+
 export function getFaceMetrics(shape) {
   const scale = appState.project.settings.scalePxPerCm;
   const widthPx = shape.widthCm * scale;
@@ -120,22 +134,27 @@ function drawShapes(layer) {
 }
 
 function drawFaceDimensions(layer, shape) {
-  const { widthPx, heightPx, centerX, centerY, rotation } = getFaceMetrics(shape);
+  const corners = getFaceCorners(shape);
+  const topMid = midpoint(corners.nw, corners.ne);
+  const rightMid = midpoint(corners.ne, corners.se);
+  const widthPos = moveTowards(topMid, corners.center, 28);
+  const heightPos = moveTowards(rightMid, corners.center, 28);
+
   layer.appendChild(
     createSvgEl('text', {
-      x: centerX,
-      y: centerY - 18,
+      x: widthPos.x,
+      y: widthPos.y,
       class: 'dimension-text',
-      transform: `rotate(${rotation} ${centerX} ${centerY})`,
+      transform: `rotate(${shape.rotation ?? 0} ${widthPos.x} ${widthPos.y})`,
     }),
   ).textContent = `${Math.round(shape.widthCm)} cm`;
 
   layer.appendChild(
     createSvgEl('text', {
-      x: centerX,
-      y: centerY + 18,
+      x: heightPos.x,
+      y: heightPos.y,
       class: 'dimension-text',
-      transform: `rotate(${rotation} ${centerX} ${centerY})`,
+      transform: `rotate(${(shape.rotation ?? 0) + 90} ${heightPos.x} ${heightPos.y})`,
     }),
   ).textContent = `${Math.round(shape.heightCm)} cm`;
 }

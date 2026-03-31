@@ -24,6 +24,7 @@ import {
 
 const toast = document.getElementById('toast');
 const topbar = document.getElementById('topbar');
+const footerShell = document.querySelector('.footer-shell');
 const widthInput = document.getElementById('widthInput');
 const heightInput = document.getElementById('heightInput');
 const widthUnit = document.getElementById('widthUnit');
@@ -69,6 +70,10 @@ function inverseRotatePoint(point, center, degrees) {
   return rotatePoint(point, center, -degrees);
 }
 
+function midpoint(a, b) {
+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+}
+
 function getFaceCorners(shape) {
   const { widthPx, heightPx, centerX, centerY, rotation } = getFaceMetrics(shape);
   const center = { x: centerX, y: centerY };
@@ -83,12 +88,14 @@ function getFaceCorners(shape) {
 
 function syncTopbarWithSelection() {
   const shape = getSelectedShape();
+  const hasSelection = Boolean(shape);
+
+  topbar.classList.toggle('hidden', !hasSelection);
+  footerShell?.classList.toggle('has-selection', hasSelection);
+
   if (!shape) {
-    topbar.classList.add('hidden');
     return;
   }
-
-  topbar.classList.remove('hidden');
 
   if (shape.type === 'face') {
     widthInput.disabled = false;
@@ -229,95 +236,152 @@ function getSvgPoint(clientX, clientY) {
   };
 }
 
-function snapValue(value, candidates, threshold) {
-  let best = value;
-  let minDistance = threshold + 1;
-  candidates.forEach((candidate) => {
-    const distance = Math.abs(candidate - value);
-    if (distance < minDistance) {
-      minDistance = distance;
-      best = candidate;
-    }
-  });
-  return minDistance <= threshold ? best : value;
+function distanceBetween(a, b) {
+  return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
-function collectSnapCandidates(excludeShapeId = null) {
-  const candidatesX = [];
-  const candidatesY = [];
+function projectPointOnSegment(point, line) {
+  const dx = line.x2 - line.x1;
+  const dy = line.y2 - line.y1;
+  const lengthSq = dx * dx + dy * dy;
+  if (!lengthSq) {
+    return { x: line.x1, y: line.y1, t: 0 };
+  }
+  const t = ((point.x - line.x1) * dx + (point.y - line.y1) * dy) / lengthSq;
+  const clampedT = Math.max(0, Math.min(1, t));
+  return {
+    x: line.x1 + dx * clampedT,
+    y: line.y1 + dy * clampedT,
+    t: clampedT,
+  };
+}
+
+function pointToGuideLine(point, snappedPoint) {
+  if (distanceBetween(point, snappedPoint) < 0.001) return [];
+  return [{ x1: point.x, y1: point.y, x2: snappedPoint.x, y2: snappedPoint.y }];
+}
+
+function getShapeSnapGeometry(shape) {
+  if (shape.type === 'face') {
+    const corners = getFaceCorners(shape);
+    const topMid = midpoint(corners.nw, corners.ne);
+    const rightMid = midpoint(corners.ne, corners.se);
+    const bottomMid = midpoint(corners.sw, corners.se);
+    const leftMid = midpoint(corners.nw, corners.sw);
+    return {
+      points: [corners.nw, corners.ne, corners.se, corners.sw, topMid, rightMid, bottomMid, leftMid, corners.center],
+      lines: [
+        { x1: corners.nw.x, y1: corners.nw.y, x2: corners.ne.x, y2: corners.ne.y },
+        { x1: corners.ne.x, y1: corners.ne.y, x2: corners.se.x, y2: corners.se.y },
+        { x1: corners.se.x, y1: corners.se.y, x2: corners.sw.x, y2: corners.sw.y },
+        { x1: corners.sw.x, y1: corners.sw.y, x2: corners.nw.x, y2: corners.nw.y },
+      ],
+    };
+  }
+
+  const start = { x: shape.x1, y: shape.y1 };
+  const end = { x: shape.x2, y: shape.y2 };
+  const center = midpoint(start, end);
+  return {
+    points: [start, end, center],
+    lines: [{ x1: shape.x1, y1: shape.y1, x2: shape.x2, y2: shape.y2 }],
+  };
+}
+
+function collectSnapGeometry(excludeShapeId = null) {
+  const points = [];
+  const lines = [];
 
   appState.project.shapes.forEach((shape) => {
     if (shape.id === excludeShapeId) return;
-
-    if (shape.type === 'face') {
-      const { widthPx, heightPx, centerX, centerY } = getFaceMetrics(shape);
-      candidatesX.push(shape.x, centerX, shape.x + widthPx);
-      candidatesY.push(shape.y, centerY, shape.y + heightPx);
-      return;
-    }
-
-    candidatesX.push(shape.x1, shape.x2, (shape.x1 + shape.x2) / 2);
-    candidatesY.push(shape.y1, shape.y2, (shape.y1 + shape.y2) / 2);
+    const geometry = getShapeSnapGeometry(shape);
+    points.push(...geometry.points);
+    lines.push(...geometry.lines);
   });
 
-  return { candidatesX, candidatesY };
+  return { points, lines };
+}
+
+function getBestSnapForPoint(point, excludeShapeId = null) {
+  const threshold = appState.project.settings.snapThresholdPx;
+  const { points, lines } = collectSnapGeometry(excludeShapeId);
+  let best = {
+    snappedPoint: point,
+    distance: threshold + 1,
+    lines: [],
+  };
+
+  points.forEach((candidate) => {
+    const distance = distanceBetween(point, candidate);
+    if (distance < best.distance) {
+      best = {
+        snappedPoint: { x: candidate.x, y: candidate.y },
+        distance,
+        lines: pointToGuideLine(point, candidate),
+      };
+    }
+  });
+
+  lines.forEach((candidate) => {
+    const projected = projectPointOnSegment(point, candidate);
+    const distance = distanceBetween(point, projected);
+    if (distance < best.distance) {
+      best = {
+        snappedPoint: { x: projected.x, y: projected.y },
+        distance,
+        lines: [candidate, ...pointToGuideLine(point, projected)],
+      };
+    }
+  });
+
+  if (best.distance <= threshold) {
+    return {
+      x: best.snappedPoint.x,
+      y: best.snappedPoint.y,
+      lines: best.lines,
+    };
+  }
+
+  return { x: point.x, y: point.y, lines: [] };
 }
 
 function getSnappedPoint(point, excludeShapeId = null) {
-  const threshold = appState.project.settings.snapThresholdPx;
-  const { candidatesX, candidatesY } = collectSnapCandidates(excludeShapeId);
-
-  const snappedX = snapValue(point.x, candidatesX, threshold);
-  const snappedY = snapValue(point.y, candidatesY, threshold);
-  const lines = [];
-  if (snappedX !== point.x) lines.push({ x1: snappedX, y1: -4000, x2: snappedX, y2: 4000 });
-  if (snappedY !== point.y) lines.push({ x1: -4000, y1: snappedY, x2: 4000, y2: snappedY });
-
-  return { x: snappedX, y: snappedY, lines };
+  return getBestSnapForPoint(point, excludeShapeId);
 }
 
-function getBestSnappedDelta(anchorValues, candidateValues, threshold) {
-  let bestDelta = 0;
-  let bestDistance = threshold + 1;
-
-  anchorValues.forEach((anchor) => {
-    candidateValues.forEach((candidate) => {
-      const delta = candidate - anchor;
-      const distance = Math.abs(delta);
-      if (distance < bestDistance) {
-        bestDistance = distance;
-        bestDelta = delta;
-      }
-    });
-  });
-
-  return bestDistance <= threshold ? bestDelta : 0;
+function getMovedAnchorPoints(shape, deltaX, deltaY) {
+  const geometry = getShapeSnapGeometry(shape);
+  return geometry.points.map((point) => ({ x: point.x + deltaX, y: point.y + deltaY }));
 }
 
 function getSnappedMoveDelta(shape, rawDeltaX, rawDeltaY) {
   const threshold = appState.project.settings.snapThresholdPx;
-  const { candidatesX, candidatesY } = collectSnapCandidates(shape.id);
+  const anchors = getMovedAnchorPoints(shape, rawDeltaX, rawDeltaY);
+  let best = {
+    deltaX: rawDeltaX,
+    deltaY: rawDeltaY,
+    distance: threshold + 1,
+    lines: [],
+  };
 
-  if (shape.type === 'line') {
-    const movedXs = [shape.x1 + rawDeltaX, shape.x2 + rawDeltaX, (shape.x1 + shape.x2) / 2 + rawDeltaX];
-    const movedYs = [shape.y1 + rawDeltaY, shape.y2 + rawDeltaY, (shape.y1 + shape.y2) / 2 + rawDeltaY];
-    const snapDx = getBestSnappedDelta(movedXs, candidatesX, threshold);
-    const snapDy = getBestSnappedDelta(movedYs, candidatesY, threshold);
-    const lines = [];
-    if (snapDx !== 0) lines.push({ x1: movedXs[0] + snapDx, y1: -4000, x2: movedXs[0] + snapDx, y2: 4000 });
-    if (snapDy !== 0) lines.push({ x1: -4000, y1: movedYs[0] + snapDy, x2: 4000, y2: movedYs[0] + snapDy });
-    return { deltaX: rawDeltaX + snapDx, deltaY: rawDeltaY + snapDy, lines };
+  anchors.forEach((anchor) => {
+    const snapped = getBestSnapForPoint(anchor, shape.id);
+    const distance = distanceBetween(anchor, { x: snapped.x, y: snapped.y });
+    if (distance < best.distance) {
+      best = {
+        deltaX: rawDeltaX + (snapped.x - anchor.x),
+        deltaY: rawDeltaY + (snapped.y - anchor.y),
+        distance,
+        lines: snapped.lines,
+      };
+    }
+  });
+
+  if (best.distance <= threshold) {
+    return { deltaX: best.deltaX, deltaY: best.deltaY, lines: best.lines };
   }
 
-  const { widthPx, heightPx } = getFaceMetrics(shape);
-  const movedXs = [shape.x + rawDeltaX, shape.x + widthPx / 2 + rawDeltaX, shape.x + widthPx + rawDeltaX];
-  const movedYs = [shape.y + rawDeltaY, shape.y + heightPx / 2 + rawDeltaY, shape.y + heightPx + rawDeltaY];
-  const snapDx = getBestSnappedDelta(movedXs, candidatesX, threshold);
-  const snapDy = getBestSnappedDelta(movedYs, candidatesY, threshold);
-  const lines = [];
-  if (snapDx !== 0) lines.push({ x1: movedXs[0] + snapDx, y1: -4000, x2: movedXs[0] + snapDx, y2: 4000 });
-  if (snapDy !== 0) lines.push({ x1: -4000, y1: movedYs[0] + snapDy, x2: 4000, y2: movedYs[0] + snapDy });
-  return { deltaX: rawDeltaX + snapDx, deltaY: rawDeltaY + snapDy, lines };
+  return { deltaX: rawDeltaX, deltaY: rawDeltaY, lines: [] };
 }
 
 function normalizeDegrees(value) {

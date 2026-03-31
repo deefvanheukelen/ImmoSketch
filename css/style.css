@@ -11,6 +11,7 @@
   --outline: #111111;
   --topbar-height: 76px;
   --footer-height: 116px;
+  --primary-bar-height: 58px;
 }
 
 * { box-sizing: border-box; }
@@ -265,11 +266,28 @@ body {
   align-items: center;
   gap: 12px;
   padding: 10px 16px;
+  min-height: var(--primary-bar-height);
   overflow-x: auto;
 }
 
-.secondary-bar { background: var(--bar); }
-.primary-bar { background: var(--bar-dark); }
+.secondary-bar {
+  background: var(--bar);
+  position: relative;
+  z-index: 1;
+  margin-bottom: calc(-1 * var(--primary-bar-height));
+  transform: translateY(var(--primary-bar-height));
+  transition: transform 0.22s ease;
+}
+
+.footer-shell.has-selection .secondary-bar {
+  transform: translateY(0);
+}
+
+.primary-bar {
+  background: var(--bar-dark);
+  position: relative;
+  z-index: 2;
+}
 
 .action-btn {
   border: none;
