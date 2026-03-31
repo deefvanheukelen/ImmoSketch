@@ -91,7 +91,9 @@ function syncTopbarWithSelection() {
   const hasSelection = Boolean(shape);
 
   topbar.classList.toggle('hidden', !hasSelection);
-  footerShell?.classList.toggle('has-selection', hasSelection);
+  if (footerShell) {
+    footerShell.classList.toggle('has-selection', hasSelection);
+  }
 
   if (!shape) {
     return;
@@ -302,8 +304,7 @@ function collectSnapGeometry(excludeShapeId = null) {
   return { points, lines };
 }
 
-function getBestSnapForPoint(point, excludeShapeId = null) {
-  const threshold = appState.project.settings.snapThresholdPx;
+function getBestSnapForPoint(point, excludeShapeId = null, threshold = appState.project.settings.snapThresholdPx) {
   const { points, lines } = collectSnapGeometry(excludeShapeId);
   let best = {
     snappedPoint: point,
@@ -400,8 +401,8 @@ function getParallelLineSnap(lineA, lineB, threshold) {
   };
 }
 
-function getSnappedMoveDelta(shape, rawDeltaX, rawDeltaY) {
-  const threshold = appState.project.settings.snapThresholdPx;
+function getMagneticMoveSnap(shape, rawDeltaX, rawDeltaY) {
+  const threshold = appState.project.settings.moveSnapThresholdPx ?? appState.project.settings.snapThresholdPx;
   const anchors = getMovedAnchorPoints(shape, rawDeltaX, rawDeltaY);
   const movedGeometry = getShapeSnapGeometry(shape);
   const movedLines = movedGeometry.lines.map((line) => ({
@@ -420,7 +421,7 @@ function getSnappedMoveDelta(shape, rawDeltaX, rawDeltaY) {
   };
 
   anchors.forEach((anchor) => {
-    const snapped = getBestSnapForPoint(anchor, shape.id);
+    const snapped = getBestSnapForPoint(anchor, shape.id, threshold);
     const distance = distanceBetween(anchor, { x: snapped.x, y: snapped.y });
     if (distance < best.distance) {
       best = {
@@ -524,13 +525,50 @@ function startFaceResize(shape, corner) {
 }
 
 function startLineEndpointResize(shape, endpoint) {
+  const fixedPoint = endpoint === 'start'
+    ? { x: shape.x2, y: shape.y2 }
+    : { x: shape.x1, y: shape.y1 };
+  const axis = (() => {
+    const dx = shape.x2 - shape.x1;
+    const dy = shape.y2 - shape.y1;
+    const length = Math.hypot(dx, dy) || 1;
+    return { x: dx / length, y: dy / length };
+  })();
+
   dragState = {
     mode: 'line-endpoint',
     shapeId: shape.id,
     endpoint,
     original: structuredClone(shape),
+    fixedPoint,
+    axis,
   };
   setActiveHandle(`line-${endpoint}`);
+}
+
+function getAxisLockedPoint(rawPoint, fixedPoint, axis) {
+  const dx = rawPoint.x - fixedPoint.x;
+  const dy = rawPoint.y - fixedPoint.y;
+  const parallel = dx * axis.x + dy * axis.y;
+  const perpendicular = dx * (-axis.y) + dy * axis.x;
+  const perpendicularAbs = Math.abs(perpendicular);
+  const parallelAbs = Math.abs(parallel);
+  const hardThreshold = appState.project.settings.lineAxisLockThresholdPx ?? 18;
+  const releaseFactor = 0.42;
+
+  if (perpendicularAbs <= hardThreshold || perpendicularAbs <= parallelAbs * releaseFactor) {
+    return {
+      x: fixedPoint.x + axis.x * parallel,
+      y: fixedPoint.y + axis.y * parallel,
+      locked: true,
+    };
+  }
+
+  return {
+    x: rawPoint.x,
+    y: rawPoint.y,
+    locked: false,
+  };
 }
 
 function updateToolPreview(clientX, clientY, tool) {
@@ -655,7 +693,7 @@ function bindCanvasPointerEvents() {
       Object.assign(shape, structuredClone(dragState.original));
       const rawDeltaX = point.x - dragState.startPoint.x;
       const rawDeltaY = point.y - dragState.startPoint.y;
-      const snapped = getSnappedMoveDelta(shape, rawDeltaX, rawDeltaY);
+      const snapped = getMagneticMoveSnap(shape, rawDeltaX, rawDeltaY);
       moveShapeBy(shape, snapped.deltaX, snapped.deltaY);
       setSnapLines(snapped.lines);
       syncTopbarWithSelection();
@@ -680,7 +718,8 @@ function bindCanvasPointerEvents() {
 
     if (dragState.mode === 'line-endpoint') {
       Object.assign(shape, structuredClone(dragState.original));
-      const snapped = getSnappedPoint(point, shape.id);
+      const axisLocked = getAxisLockedPoint(point, dragState.fixedPoint, dragState.axis);
+      const snapped = getSnappedPoint({ x: axisLocked.x, y: axisLocked.y }, shape.id);
       updateLineEndpoint(shape, dragState.endpoint === 'start' ? 'start' : 'end', snapped.x, snapped.y);
       setSnapLines(snapped.lines);
       syncTopbarWithSelection();

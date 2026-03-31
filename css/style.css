@@ -275,12 +275,16 @@ body {
   position: relative;
   z-index: 1;
   margin-bottom: calc(-1 * var(--primary-bar-height));
-  transform: translateY(var(--primary-bar-height));
-  transition: transform 0.22s ease;
+  transform: translateY(calc(var(--primary-bar-height) + 8px));
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 0.22s ease, opacity 0.22s ease;
 }
 
 .footer-shell.has-selection .secondary-bar {
   transform: translateY(0);
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .primary-bar {
@@ -312,7 +316,7 @@ body {
 
 .line-hit-area {
   stroke: rgba(0, 0, 0, 0);
-  stroke-width: 28;
+  stroke-width: 34;
   stroke-linecap: round;
 }
 
@@ -320,6 +324,12 @@ body {
   fill: none;
   stroke: var(--accent);
   stroke-width: 2;
+}
+
+.handle-hit-area {
+  fill: rgba(255, 255, 255, 0.001);
+  stroke: rgba(0, 0, 0, 0);
+  pointer-events: all;
 }
 
 .rotate-handle,

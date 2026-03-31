@@ -23,6 +23,8 @@ export const appState = {
       scalePxPerCm: 0.5,
       snapEnabled: true,
       snapThresholdPx: 18,
+      moveSnapThresholdPx: 34,
+      lineAxisLockThresholdPx: 20,
       rotateSnapDeg: 45,
       rotateSnapThresholdDeg: 7,
     },
