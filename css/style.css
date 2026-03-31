@@ -327,7 +327,7 @@ body {
 .endpoint-handle {
   fill: #ffffff;
   stroke: var(--accent);
-  stroke-width: 2;
+  stroke-width: 2.5;
 }
 
 .rotate-handle { fill: #dff9e3; }

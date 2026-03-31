@@ -22,7 +22,7 @@ export const appState = {
     settings: {
       scalePxPerCm: 0.5,
       snapEnabled: true,
-      snapThresholdPx: 12,
+      snapThresholdPx: 18,
       rotateSnapDeg: 45,
       rotateSnapThresholdDeg: 7,
     },

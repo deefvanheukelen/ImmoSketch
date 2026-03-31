@@ -26,6 +26,22 @@ function midpoint(a, b) {
   return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
 }
 
+function edgeLength(edge) {
+  return Math.hypot(edge.end.x - edge.start.x, edge.end.y - edge.start.y);
+}
+
+function edgeAngleDeg(edge) {
+  return (Math.atan2(edge.end.y - edge.start.y, edge.end.x - edge.start.x) * 180) / Math.PI;
+}
+
+function normalizeTextAngle(degrees) {
+  let angle = ((degrees % 360) + 360) % 360;
+  if (angle > 180) angle -= 360;
+  if (angle > 90) angle -= 180;
+  if (angle < -90) angle += 180;
+  return angle;
+}
+
 function moveTowards(point, target, distance) {
   const dx = target.x - point.x;
   const dy = target.y - point.y;
@@ -135,28 +151,33 @@ function drawShapes(layer) {
 
 function drawFaceDimensions(layer, shape) {
   const corners = getFaceCorners(shape);
-  const topMid = midpoint(corners.nw, corners.ne);
-  const rightMid = midpoint(corners.ne, corners.se);
-  const widthPos = moveTowards(topMid, corners.center, 28);
-  const heightPos = moveTowards(rightMid, corners.center, 28);
+  const edges = [
+    { start: corners.nw, end: corners.ne },
+    { start: corners.ne, end: corners.se },
+    { start: corners.se, end: corners.sw },
+    { start: corners.sw, end: corners.nw },
+  ].map((edge) => ({
+    ...edge,
+    mid: midpoint(edge.start, edge.end),
+  }));
 
-  layer.appendChild(
-    createSvgEl('text', {
-      x: widthPos.x,
-      y: widthPos.y,
-      class: 'dimension-text',
-      transform: `rotate(${shape.rotation ?? 0} ${widthPos.x} ${widthPos.y})`,
-    }),
-  ).textContent = `${Math.round(shape.widthCm)} cm`;
+  const topEdge = edges.reduce((best, edge) => (edge.mid.y < best.mid.y ? edge : best), edges[0]);
+  const rightEdge = edges.reduce((best, edge) => (edge.mid.x > best.mid.x ? edge : best), edges[0]);
 
-  layer.appendChild(
-    createSvgEl('text', {
-      x: heightPos.x,
-      y: heightPos.y,
-      class: 'dimension-text',
-      transform: `rotate(${(shape.rotation ?? 0) + 90} ${heightPos.x} ${heightPos.y})`,
-    }),
-  ).textContent = `${Math.round(shape.heightCm)} cm`;
+  [topEdge, rightEdge].forEach((edge) => {
+    const position = moveTowards(edge.mid, corners.center, 28);
+    const angle = normalizeTextAngle(edgeAngleDeg(edge));
+    const valueCm = Math.round(edgeLength(edge) / appState.project.settings.scalePxPerCm);
+
+    layer.appendChild(
+      createSvgEl('text', {
+        x: position.x,
+        y: position.y,
+        class: 'dimension-text',
+        transform: `rotate(${angle} ${position.x} ${position.y})`,
+      }),
+    ).textContent = `${valueCm} cm`;
+  });
 }
 
 function drawLineDimension(layer, shape) {
@@ -201,7 +222,7 @@ function drawSelection(layer) {
         createSvgEl('circle', {
           cx: point.x,
           cy: point.y,
-          r: 12,
+          r: 14,
           class: 'resize-handle',
           'data-handle': 'resize-face',
           'data-corner': handleName,
@@ -215,7 +236,7 @@ function drawSelection(layer) {
       createSvgEl('circle', {
         cx: rotatePointWorld.x,
         cy: rotatePointWorld.y,
-        r: 10,
+        r: 12,
         class: 'rotate-handle',
         'data-handle': 'rotate',
         'data-shape-id': shape.id,
@@ -241,7 +262,7 @@ function drawSelection(layer) {
     createSvgEl('circle', {
       cx: shape.x1,
       cy: shape.y1,
-      r: 12,
+      r: 14,
       class: 'endpoint-handle',
       'data-handle': 'line-endpoint',
       'data-endpoint': 'start',
@@ -253,7 +274,7 @@ function drawSelection(layer) {
     createSvgEl('circle', {
       cx: shape.x2,
       cy: shape.y2,
-      r: 12,
+      r: 14,
       class: 'endpoint-handle',
       'data-handle': 'line-endpoint',
       'data-endpoint': 'end',
@@ -265,7 +286,7 @@ function drawSelection(layer) {
     createSvgEl('circle', {
       cx: centerX,
       cy: centerY - 28,
-      r: 10,
+      r: 12,
       class: 'rotate-handle',
       'data-handle': 'rotate',
       'data-shape-id': shape.id,

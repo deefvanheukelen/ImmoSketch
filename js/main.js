@@ -354,9 +354,64 @@ function getMovedAnchorPoints(shape, deltaX, deltaY) {
   return geometry.points.map((point) => ({ x: point.x + deltaX, y: point.y + deltaY }));
 }
 
+function getProjectedRangeOnAxis(line, axis) {
+  const start = line.x1 * axis.x + line.y1 * axis.y;
+  const end = line.x2 * axis.x + line.y2 * axis.y;
+  return { min: Math.min(start, end), max: Math.max(start, end) };
+}
+
+function getParallelLineSnap(lineA, lineB, threshold) {
+  const dxA = lineA.x2 - lineA.x1;
+  const dyA = lineA.y2 - lineA.y1;
+  const dxB = lineB.x2 - lineB.x1;
+  const dyB = lineB.y2 - lineB.y1;
+  const lengthA = Math.hypot(dxA, dyA);
+  const lengthB = Math.hypot(dxB, dyB);
+
+  if (!lengthA || !lengthB) return null;
+
+  const axisA = { x: dxA / lengthA, y: dyA / lengthA };
+  const axisB = { x: dxB / lengthB, y: dyB / lengthB };
+  const cross = Math.abs(axisA.x * axisB.y - axisA.y * axisB.x);
+  if (cross > 0.18) return null;
+
+  const normal = { x: -axisB.y, y: axisB.x };
+  const midpointA = { x: (lineA.x1 + lineA.x2) / 2, y: (lineA.y1 + lineA.y2) / 2 };
+  const midpointB = { x: (lineB.x1 + lineB.x2) / 2, y: (lineB.y1 + lineB.y2) / 2 };
+  const perpendicularOffset = ((midpointA.x - midpointB.x) * normal.x) + ((midpointA.y - midpointB.y) * normal.y);
+  const distance = Math.abs(perpendicularOffset);
+  if (distance > threshold) return null;
+
+  const rangeA = getProjectedRangeOnAxis(lineA, axisB);
+  const rangeB = getProjectedRangeOnAxis(lineB, axisB);
+  const overlap = Math.min(rangeA.max, rangeB.max) - Math.max(rangeA.min, rangeB.min);
+  if (overlap < -threshold) return null;
+
+  const delta = {
+    x: -normal.x * perpendicularOffset,
+    y: -normal.y * perpendicularOffset,
+  };
+
+  return {
+    deltaX: delta.x,
+    deltaY: delta.y,
+    distance,
+    lines: [lineB, { x1: midpointA.x, y1: midpointA.y, x2: midpointA.x + delta.x, y2: midpointA.y + delta.y }],
+  };
+}
+
 function getSnappedMoveDelta(shape, rawDeltaX, rawDeltaY) {
   const threshold = appState.project.settings.snapThresholdPx;
   const anchors = getMovedAnchorPoints(shape, rawDeltaX, rawDeltaY);
+  const movedGeometry = getShapeSnapGeometry(shape);
+  const movedLines = movedGeometry.lines.map((line) => ({
+    x1: line.x1 + rawDeltaX,
+    y1: line.y1 + rawDeltaY,
+    x2: line.x2 + rawDeltaX,
+    y2: line.y2 + rawDeltaY,
+  }));
+  const staticGeometry = collectSnapGeometry(shape.id);
+
   let best = {
     deltaX: rawDeltaX,
     deltaY: rawDeltaY,
@@ -375,6 +430,20 @@ function getSnappedMoveDelta(shape, rawDeltaX, rawDeltaY) {
         lines: snapped.lines,
       };
     }
+  });
+
+  movedLines.forEach((movedLine) => {
+    staticGeometry.lines.forEach((candidateLine) => {
+      const lineSnap = getParallelLineSnap(movedLine, candidateLine, threshold);
+      if (lineSnap && lineSnap.distance < best.distance) {
+        best = {
+          deltaX: rawDeltaX + lineSnap.deltaX,
+          deltaY: rawDeltaY + lineSnap.deltaY,
+          distance: lineSnap.distance,
+          lines: lineSnap.lines,
+        };
+      }
+    });
   });
 
   if (best.distance <= threshold) {
@@ -653,10 +722,11 @@ function bindCanvasPointerEvents() {
       if (finishedDrag?.mode === 'rotate' && finishedDrag.rotateHandleClick) {
         const shape = getShapeById(finishedDrag.shapeId);
         if (shape) {
+          Object.assign(shape, structuredClone(finishedDrag.original));
           if (shape.type === 'line') {
-            rotateLineTo(shape, getLineAngle(shape) + 90);
+            rotateLineTo(shape, finishedDrag.baseRotation + 90);
           } else {
-            rotateFaceTo(shape, normalizeDegrees((shape.rotation ?? 0) + 90));
+            rotateFaceTo(shape, finishedDrag.baseRotation + 90);
           }
           syncTopbarWithSelection();
         }
