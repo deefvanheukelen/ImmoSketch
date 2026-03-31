@@ -5,6 +5,7 @@ import {
   deleteSelectedShape,
   duplicateSelectedShape,
   getSelectedShape,
+  clearSelection,
   getShapeById,
   moveShapeBy,
   panViewport,
@@ -39,6 +40,7 @@ const pointerState = new Map();
 let pinchStart = null;
 let dragState = null;
 let toolbarDrag = null;
+const TAP_PAN_THRESHOLD = 8;
 
 const OPPOSITE_CORNERS = { nw: 'se', ne: 'sw', se: 'nw', sw: 'ne' };
 
@@ -241,8 +243,8 @@ function snapValue(value, candidates, threshold) {
 }
 
 function collectSnapCandidates(excludeShapeId = null) {
-  const candidatesX = [0, 600, 1200];
-  const candidatesY = [0, 450, 900];
+  const candidatesX = [];
+  const candidatesY = [];
 
   appState.project.shapes.forEach((shape) => {
     if (shape.id === excludeShapeId) return;
@@ -262,31 +264,60 @@ function collectSnapCandidates(excludeShapeId = null) {
 }
 
 function getSnappedPoint(point, excludeShapeId = null) {
-  const step = appState.project.settings.snapStepPx;
   const threshold = appState.project.settings.snapThresholdPx;
   const { candidatesX, candidatesY } = collectSnapCandidates(excludeShapeId);
-  const gridX = Math.round(point.x / step) * step;
-  const gridY = Math.round(point.y / step) * step;
-  candidatesX.push(gridX);
-  candidatesY.push(gridY);
 
   const snappedX = snapValue(point.x, candidatesX, threshold);
   const snappedY = snapValue(point.y, candidatesY, threshold);
   const lines = [];
-  if (snappedX !== point.x) lines.push({ x1: snappedX, y1: 0, x2: snappedX, y2: 900 });
-  if (snappedY !== point.y) lines.push({ x1: 0, y1: snappedY, x2: 1200, y2: snappedY });
+  if (snappedX !== point.x) lines.push({ x1: snappedX, y1: -4000, x2: snappedX, y2: 4000 });
+  if (snappedY !== point.y) lines.push({ x1: -4000, y1: snappedY, x2: 4000, y2: snappedY });
 
   return { x: snappedX, y: snappedY, lines };
 }
 
+function getBestSnappedDelta(anchorValues, candidateValues, threshold) {
+  let bestDelta = 0;
+  let bestDistance = threshold + 1;
+
+  anchorValues.forEach((anchor) => {
+    candidateValues.forEach((candidate) => {
+      const delta = candidate - anchor;
+      const distance = Math.abs(delta);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestDelta = delta;
+      }
+    });
+  });
+
+  return bestDistance <= threshold ? bestDelta : 0;
+}
+
 function getSnappedMoveDelta(shape, rawDeltaX, rawDeltaY) {
+  const threshold = appState.project.settings.snapThresholdPx;
+  const { candidatesX, candidatesY } = collectSnapCandidates(shape.id);
+
   if (shape.type === 'line') {
-    const start = getSnappedPoint({ x: shape.x1 + rawDeltaX, y: shape.y1 + rawDeltaY }, shape.id);
-    return { deltaX: start.x - shape.x1, deltaY: start.y - shape.y1, lines: start.lines };
+    const movedXs = [shape.x1 + rawDeltaX, shape.x2 + rawDeltaX, (shape.x1 + shape.x2) / 2 + rawDeltaX];
+    const movedYs = [shape.y1 + rawDeltaY, shape.y2 + rawDeltaY, (shape.y1 + shape.y2) / 2 + rawDeltaY];
+    const snapDx = getBestSnappedDelta(movedXs, candidatesX, threshold);
+    const snapDy = getBestSnappedDelta(movedYs, candidatesY, threshold);
+    const lines = [];
+    if (snapDx !== 0) lines.push({ x1: movedXs[0] + snapDx, y1: -4000, x2: movedXs[0] + snapDx, y2: 4000 });
+    if (snapDy !== 0) lines.push({ x1: -4000, y1: movedYs[0] + snapDy, x2: 4000, y2: movedYs[0] + snapDy });
+    return { deltaX: rawDeltaX + snapDx, deltaY: rawDeltaY + snapDy, lines };
   }
 
-  const snappedTopLeft = getSnappedPoint({ x: shape.x + rawDeltaX, y: shape.y + rawDeltaY }, shape.id);
-  return { deltaX: snappedTopLeft.x - shape.x, deltaY: snappedTopLeft.y - shape.y, lines: snappedTopLeft.lines };
+  const { widthPx, heightPx } = getFaceMetrics(shape);
+  const movedXs = [shape.x + rawDeltaX, shape.x + widthPx / 2 + rawDeltaX, shape.x + widthPx + rawDeltaX];
+  const movedYs = [shape.y + rawDeltaY, shape.y + heightPx / 2 + rawDeltaY, shape.y + heightPx + rawDeltaY];
+  const snapDx = getBestSnappedDelta(movedXs, candidatesX, threshold);
+  const snapDy = getBestSnappedDelta(movedYs, candidatesY, threshold);
+  const lines = [];
+  if (snapDx !== 0) lines.push({ x1: movedXs[0] + snapDx, y1: -4000, x2: movedXs[0] + snapDx, y2: 4000 });
+  if (snapDy !== 0) lines.push({ x1: -4000, y1: movedYs[0] + snapDy, x2: 4000, y2: movedYs[0] + snapDy });
+  return { deltaX: rawDeltaX + snapDx, deltaY: rawDeltaY + snapDy, lines };
 }
 
 function normalizeDegrees(value) {
@@ -318,9 +349,12 @@ function startMove(shape, point) {
 
 function startPan(clientX, clientY) {
   dragState = {
-    mode: 'pan',
+    mode: 'pan-ready',
+    startClientX: clientX,
+    startClientY: clientY,
     lastClientX: clientX,
     lastClientY: clientY,
+    moved: false,
   };
 }
 
@@ -336,9 +370,11 @@ function startRotate(shape, point) {
     mode: 'rotate',
     shapeId: shape.id,
     center,
+    startPoint: point,
     original: structuredClone(shape),
     startAngle: Math.atan2(point.y - center.y, point.x - center.x),
     baseRotation: shape.type === 'line' ? getLineAngle(shape) : normalizeDegrees(shape.rotation ?? 0),
+    rotateHandleClick: true,
   };
   setActiveHandle('rotate');
 }
@@ -462,7 +498,13 @@ function bindCanvasPointerEvents() {
 
     if (!dragState) return;
 
-    if (dragState.mode === 'pan') {
+    if (dragState.mode === 'pan-ready' || dragState.mode === 'pan') {
+      const distance = Math.hypot(event.clientX - dragState.startClientX, event.clientY - dragState.startClientY);
+      if (dragState.mode === 'pan-ready' && distance <= TAP_PAN_THRESHOLD) {
+        return;
+      }
+      dragState.mode = 'pan';
+      dragState.moved = true;
       const deltaX = event.clientX - dragState.lastClientX;
       const deltaY = event.clientY - dragState.lastClientY;
       panViewport(deltaX, deltaY);
@@ -490,6 +532,8 @@ function bindCanvasPointerEvents() {
 
     if (dragState.mode === 'rotate') {
       const currentAngle = Math.atan2(point.y - dragState.center.y, point.x - dragState.center.x);
+      const dragDistance = Math.hypot(point.x - dragState.startPoint.x, point.y - dragState.startPoint.y);
+      if (dragDistance > 6) dragState.rotateHandleClick = false;
       const deltaDeg = ((currentAngle - dragState.startAngle) * 180) / Math.PI;
       const targetDeg = snapAngle(dragState.baseRotation + deltaDeg);
       Object.assign(shape, structuredClone(dragState.original));
@@ -532,9 +576,28 @@ function bindCanvasPointerEvents() {
   });
 
   function endPointer(event) {
+    const finishedDrag = dragState ? { ...dragState } : null;
     pointerState.delete(event.pointerId);
     if (pointerState.size < 2) pinchStart = null;
+
     if (pointerState.size === 0) {
+      if (finishedDrag?.mode === 'pan-ready' && !finishedDrag.moved) {
+        clearSelection();
+        syncTopbarWithSelection();
+      }
+
+      if (finishedDrag?.mode === 'rotate' && finishedDrag.rotateHandleClick) {
+        const shape = getShapeById(finishedDrag.shapeId);
+        if (shape) {
+          if (shape.type === 'line') {
+            rotateLineTo(shape, getLineAngle(shape) + 90);
+          } else {
+            rotateFaceTo(shape, normalizeDegrees((shape.rotation ?? 0) + 90));
+          }
+          syncTopbarWithSelection();
+        }
+      }
+
       dragState = null;
       setActiveHandle(null);
       setSnapLines([]);
