@@ -1,62 +1,18 @@
 <!DOCTYPE html>
 <html lang="nl">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>ImmoSketch – 2D grondplan</title>
-  <link rel="stylesheet" href="css/styles.css" />
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Grondplan App v9</title>
+<link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-  <div class="app-shell">
-    <header class="topbar">
-      <div class="brand">ImmoSketch</div>
-      <div class="top-actions">
-        <button id="undoBtn" class="icon-btn" disabled title="Ongedaan maken">↶</button>
-        <button id="redoBtn" class="icon-btn" disabled title="Opnieuw">↷</button>
-        <button id="deleteBtn" class="icon-btn danger" disabled title="Verwijderen">✕</button>
-      </div>
-    </header>
-
-    <section id="propertyBar" class="property-bar hidden">
-      <div class="field-group">
-        <label for="propWidth">Breedte (mm)</label>
-        <input id="propWidth" type="number" min="1" step="10" />
-      </div>
-      <div class="field-group">
-        <label for="propHeight">Hoogte (mm)</label>
-        <input id="propHeight" type="number" min="1" step="10" />
-      </div>
-      <div class="field-group line-only hidden" id="lineLengthGroup">
-        <label for="propLength">Lengte (mm)</label>
-        <input id="propLength" type="number" min="1" step="10" />
-      </div>
-      <div class="field-group">
-        <label for="propRotation">Rotatie</label>
-        <input id="propRotation" type="number" step="90" />
-      </div>
-      <button id="applyPropsBtn" class="primary-btn">Toepassen</button>
-    </section>
-
-    <main class="main-layout">
-      <section class="canvas-panel">
-        <div id="canvasWrapper" class="canvas-wrapper">
-          <svg id="floorCanvas" viewBox="0 0 1400 900" aria-label="Tekenveld"></svg>
-        </div>
-      </section>
-
-      <aside class="sidebar">
-        <h2>Elementen</h2>
-        <p class="hint">Sleep een element naar het canvas.</p>
-        <div class="tool-list">
-          <div class="tool-item" draggable="true" data-tool="rect">Vlak</div>
-          <div class="tool-item" draggable="true" data-tool="line">Lijn / muur</div>
-          <div class="tool-item" draggable="true" data-tool="door">Deur</div>
-          <div class="tool-item" draggable="true" data-tool="doubleDoor">Dubbeldeur</div>
-        </div>
-      </aside>
-    </main>
-  </div>
-
-  <script src="js/app.js"></script>
+<div class="toolbar" id="toolbar">
+  <div class="tool">Lijn</div>
+  <div class="tool">Deur</div>
+  <div class="tool">Dubbeldeur</div>
+</div>
+<div id="canvas"></div>
+<script src="js/main.js"></script>
 </body>
 </html>
