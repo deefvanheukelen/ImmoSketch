@@ -1,1 +1,0 @@
-console.log("Grondplan app v9 geladen");
