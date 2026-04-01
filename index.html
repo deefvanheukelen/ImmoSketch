@@ -2,95 +2,61 @@
 <html lang="nl">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>2D Grondplan Teken App – Fase 7</title>
-  <link rel="stylesheet" href="css/style.css" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>ImmoSketch – 2D grondplan</title>
+  <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <div class="app-shell">
-    <header class="topbar hidden" id="topbar">
-      <div class="dimension-group" id="widthGroup">
-        <input id="widthInput" type="number" min="1" value="400" inputmode="decimal" />
-        <span id="widthUnit">cm</span>
+    <header class="topbar">
+      <div class="brand">ImmoSketch</div>
+      <div class="top-actions">
+        <button id="undoBtn" class="icon-btn" disabled title="Ongedaan maken">↶</button>
+        <button id="redoBtn" class="icon-btn" disabled title="Opnieuw">↷</button>
+        <button id="deleteBtn" class="icon-btn danger" disabled title="Verwijderen">✕</button>
       </div>
-      <span class="times" id="dimensionTimes">x</span>
-      <div class="dimension-group" id="heightGroup">
-        <input id="heightInput" type="number" min="1" value="400" inputmode="decimal" />
-        <span id="heightUnit">cm</span>
-      </div>
-      <div class="topbar-spacer"></div>
-      <button id="applyDimensionsBtn" class="primary-btn">Pas afmetingen toe</button>
     </header>
 
-    <main class="workspace">
+    <section id="propertyBar" class="property-bar hidden">
+      <div class="field-group">
+        <label for="propWidth">Breedte (mm)</label>
+        <input id="propWidth" type="number" min="1" step="10" />
+      </div>
+      <div class="field-group">
+        <label for="propHeight">Hoogte (mm)</label>
+        <input id="propHeight" type="number" min="1" step="10" />
+      </div>
+      <div class="field-group line-only hidden" id="lineLengthGroup">
+        <label for="propLength">Lengte (mm)</label>
+        <input id="propLength" type="number" min="1" step="10" />
+      </div>
+      <div class="field-group">
+        <label for="propRotation">Rotatie</label>
+        <input id="propRotation" type="number" step="90" />
+      </div>
+      <button id="applyPropsBtn" class="primary-btn">Toepassen</button>
+    </section>
+
+    <main class="main-layout">
       <section class="canvas-panel">
-        <div class="canvas-stage" id="canvasStage">
-          <svg id="planCanvas" viewBox="0 0 1200 900" xmlns="http://www.w3.org/2000/svg" aria-label="Tekenveld">
-            <g id="viewportLayer">
-              <rect width="1200" height="900" class="canvas-background" data-canvas-bg="true" />
-              <g id="guideLayer"></g>
-              <g id="shapeLayer"></g>
-              <g id="selectionLayer"></g>
-              <g id="toolPreviewLayer"></g>
-            </g>
-          </svg>
+        <div id="canvasWrapper" class="canvas-wrapper">
+          <svg id="floorCanvas" viewBox="0 0 1400 900" aria-label="Tekenveld"></svg>
         </div>
       </section>
 
-      <aside class="right-toolbar" aria-label="Tools" id="toolTray">
-        <button class="tool-btn" data-tool="line">
-          <span class="tool-icon line-icon"></span>
-          <span class="tool-label">Lijn</span>
-        </button>
-        <button class="tool-btn" data-tool="square">
-          <span class="tool-icon square-icon"></span>
-          <span class="tool-label">Vierkant</span>
-        </button>
-        <button class="tool-btn" data-tool="door">
-          <span class="tool-icon door-icon"></span>
-          <span class="tool-label">Deur</span>
-        </button>
-        <button class="tool-btn" data-tool="double-door">
-          <span class="tool-icon double-door-icon"></span>
-          <span class="tool-label">Dubbeldeur</span>
-        </button>
-        <button class="tool-btn" data-tool="garage">
-          <span class="tool-icon garage-icon"></span>
-          <span class="tool-label">Garagepoort</span>
-        </button>
-        <button class="tool-btn" data-tool="window">
-          <span class="tool-icon window-icon"></span>
-          <span class="tool-label">Raam</span>
-        </button>
-        <button class="tool-btn" data-tool="opening">
-          <span class="tool-icon opening-icon"></span>
-          <span class="tool-label">Opening</span>
-        </button>
-        <button class="tool-btn" data-tool="note">
-          <span class="tool-icon note-icon"></span>
-          <span class="tool-label">Opmerking</span>
-        </button>
+      <aside class="sidebar">
+        <h2>Elementen</h2>
+        <p class="hint">Sleep een element naar het canvas.</p>
+        <div class="tool-list">
+          <div class="tool-item" draggable="true" data-tool="rect">Vlak</div>
+          <div class="tool-item" draggable="true" data-tool="line">Lijn / muur</div>
+          <div class="tool-item" draggable="true" data-tool="door">Deur</div>
+          <div class="tool-item" draggable="true" data-tool="doubleDoor">Dubbeldeur</div>
+        </div>
       </aside>
     </main>
-
-    <footer class="footer-shell" id="footerShell">
-      <div class="actionbar secondary-bar" id="secondaryBar">
-        <button class="action-btn" id="deleteBtn">Verwijder</button>
-        <button class="action-btn" id="duplicateBtn">Dupliceer</button>
-      </div>
-      <div class="actionbar primary-bar">
-        <button class="action-btn" id="undoBtn">Ongedaan maken</button>
-        <button class="action-btn" id="redoBtn">Opnieuw</button>
-        <button class="action-btn" id="saveBtn">Opslaan</button>
-        <button class="action-btn" id="exportBtn">Export</button>
-        <button class="action-btn" id="settingsBtn">Instellingen</button>
-      </div>
-    </footer>
   </div>
 
-  <div class="drag-indicator hidden" id="dragIndicator">Sleep naar het canvas</div>
-  <div class="toast" id="toast"></div>
-
-  <script type="module" src="js/main.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>
