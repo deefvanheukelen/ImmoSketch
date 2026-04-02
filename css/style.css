@@ -189,3 +189,5 @@ button, input { font: inherit; }
 .edge-dimension-text {
   font-size: 20px;
 }
+
+.handle-hit { fill: transparent; stroke: transparent; pointer-events: all; }

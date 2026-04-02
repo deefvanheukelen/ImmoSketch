@@ -76,6 +76,61 @@ function getPointerDistance(a, b) {
   return Math.hypot(b.clientX - a.clientX, b.clientY - a.clientY);
 }
 
+function getWorldHitRadius(baseScreenPx = 22) {
+  return baseScreenPx / Math.max(appState.view.zoom || 1, 0.001);
+}
+
+function getVirtualHandleAtPoint(point) {
+  const selected = getSelectedShape();
+  if (!selected) return null;
+  const hitRadius = getWorldHitRadius(24);
+  const rotateRadius = getWorldHitRadius(26);
+
+  if (selected.type === 'rect') {
+    const corners = getRectCorners(selected);
+    const center = getRectCenter(selected);
+    const edgeMids = [
+      { x: (corners[0].x + corners[1].x) / 2, y: (corners[0].y + corners[1].y) / 2, handle: 'side-top' },
+      { x: (corners[1].x + corners[2].x) / 2, y: (corners[1].y + corners[2].y) / 2, handle: 'side-right' },
+      { x: (corners[2].x + corners[3].x) / 2, y: (corners[2].y + corners[3].y) / 2, handle: 'side-bottom' },
+      { x: (corners[3].x + corners[0].x) / 2, y: (corners[3].y + corners[0].y) / 2, handle: 'side-left' },
+    ];
+    const topY = Math.min(...corners.map((p) => p.y));
+    const rotatePoint = { x: center.x, y: topY - 38 };
+
+    for (let i = 0; i < corners.length; i += 1) {
+      if (Math.hypot(point.x - corners[i].x, point.y - corners[i].y) <= hitRadius) return `resize-${i}`;
+    }
+    for (const edgeMid of edgeMids) {
+      if (Math.hypot(point.x - edgeMid.x, point.y - edgeMid.y) <= hitRadius) return edgeMid.handle;
+    }
+    if (Math.hypot(point.x - rotatePoint.x, point.y - rotatePoint.y) <= rotateRadius) return 'rotate';
+    return null;
+  }
+
+  if (selected.type === 'line') {
+    if (Math.hypot(point.x - selected.x1, point.y - selected.y1) <= hitRadius) return 'line-start';
+    if (Math.hypot(point.x - selected.x2, point.y - selected.y2) <= hitRadius) return 'line-end';
+    const cx = (selected.x1 + selected.x2) / 2;
+    const cy = (selected.y1 + selected.y2) / 2;
+    if (Math.hypot(point.x - cx, point.y - (cy - 32)) <= rotateRadius) return 'rotate';
+    const dx = selected.x2 - selected.x1;
+    const dy = selected.y2 - selected.y1;
+    const len = Math.hypot(dx, dy) || 1;
+    let nx = -dy / len;
+    let ny = dx / len;
+    if (ny < 0 || (Math.abs(ny) < 0.001 && nx < 0)) {
+      nx *= -1;
+      ny *= -1;
+    }
+    const handleCenter = { x: cx + nx * 42, y: cy + ny * 42 };
+    const moveHalf = getWorldHitRadius(18);
+    if (Math.abs(point.x - handleCenter.x) <= moveHalf && Math.abs(point.y - handleCenter.y) <= moveHalf) return 'line-move';
+  }
+
+  return null;
+}
+
 function bindToolbar() {
   toolButtons.forEach((button) => {
     button.addEventListener('click', () => {
@@ -142,7 +197,7 @@ function onCanvasPointerDown(event) {
   const point = getCanvasPointFromClient(event.clientX, event.clientY);
   if (handlePinchStart(event)) return;
 
-  const handle = event.target.closest('[data-handle]')?.getAttribute('data-handle');
+  const handle = event.target.closest('[data-handle]')?.getAttribute('data-handle') || getVirtualHandleAtPoint(point);
   const shapeId = event.target.closest('[data-shape-id]')?.getAttribute('data-shape-id');
 
   if (handle) {
@@ -647,8 +702,9 @@ function resizeRectFromHandle(shape, point) {
     const handleIndex = Number(handle.replace('resize-', ''));
     const oppositeIndex = (handleIndex + 2) % 4;
     const fixed = corners[oppositeIndex];
-    const snap = applyMagneticSnap([point], shape.id);
-    const movingWorld = { x: point.x + snap.dx, y: point.y + snap.dy };
+    const movingRaw = point;
+    const snap = applyMagneticSnap([movingRaw], shape.id);
+    const movingWorld = { x: movingRaw.x + snap.dx, y: movingRaw.y + snap.dy };
     const center = { x: (fixed.x + movingWorld.x) / 2, y: (fixed.y + movingWorld.y) / 2 };
     const unrotFixed = rotatePoint(fixed, center, -angle);
     const unrotMoving = rotatePoint(movingWorld, center, -angle);
@@ -661,32 +717,40 @@ function resizeRectFromHandle(shape, point) {
     return;
   }
 
-  const localPoint = rotatePoint(point, centerOriginal, -angle);
-  const snap = applyMagneticSnap([point], shape.id);
-  const snappedLocal = rotatePoint({ x: point.x + snap.dx, y: point.y + snap.dy }, centerOriginal, -angle);
+  const rawLocal = rotatePoint(point, centerOriginal, -angle);
 
   if (handle === 'side-top' || handle === 'side-bottom') {
     const fixedLocalY = handle === 'side-top' ? original.y + original.heightPx : original.y;
-    const movingY = snappedLocal.y;
-    const height = Math.max(minSize, Math.abs(movingY - fixedLocalY));
-    const centerLocalY = (movingY + fixedLocalY) / 2;
+    const movingLocalY = rawLocal.y;
+    const edgeCenterWorld = rotatePoint({ x: centerOriginal.x, y: movingLocalY }, centerOriginal, angle);
+    const snap = applyMagneticSnap([edgeCenterWorld], shape.id);
+    const snappedWorld = { x: edgeCenterWorld.x + snap.dx, y: edgeCenterWorld.y + snap.dy };
+    const snappedLocal = rotatePoint(snappedWorld, centerOriginal, -angle);
+    const height = Math.max(minSize, Math.abs(snappedLocal.y - fixedLocalY));
+    const centerLocalY = (snappedLocal.y + fixedLocalY) / 2;
     const centerWorld = rotatePoint({ x: centerOriginal.x, y: centerLocalY }, centerOriginal, angle);
     shape.heightPx = height;
     shape.widthPx = original.widthPx;
     shape.x = centerWorld.x - shape.widthPx / 2;
     shape.y = centerWorld.y - shape.heightPx / 2;
-  } else {
-    const fixedLocalX = handle === 'side-left' ? original.x + original.widthPx : original.x;
-    const movingX = snappedLocal.x;
-    const width = Math.max(minSize, Math.abs(movingX - fixedLocalX));
-    const centerLocalX = (movingX + fixedLocalX) / 2;
-    const centerWorld = rotatePoint({ x: centerLocalX, y: centerOriginal.y }, centerOriginal, angle);
-    shape.widthPx = width;
-    shape.heightPx = original.heightPx;
-    shape.x = centerWorld.x - shape.widthPx / 2;
-    shape.y = centerWorld.y - shape.heightPx / 2;
+    shape.rotation = original.rotation || 0;
+    appState.project.activeGuides = snap.guides;
+    return;
   }
 
+  const fixedLocalX = handle === 'side-left' ? original.x + original.widthPx : original.x;
+  const movingLocalX = rawLocal.x;
+  const edgeCenterWorld = rotatePoint({ x: movingLocalX, y: centerOriginal.y }, centerOriginal, angle);
+  const snap = applyMagneticSnap([edgeCenterWorld], shape.id);
+  const snappedWorld = { x: edgeCenterWorld.x + snap.dx, y: edgeCenterWorld.y + snap.dy };
+  const snappedLocal = rotatePoint(snappedWorld, centerOriginal, -angle);
+  const width = Math.max(minSize, Math.abs(snappedLocal.x - fixedLocalX));
+  const centerLocalX = (snappedLocal.x + fixedLocalX) / 2;
+  const centerWorld = rotatePoint({ x: centerLocalX, y: centerOriginal.y }, centerOriginal, angle);
+  shape.widthPx = width;
+  shape.heightPx = original.heightPx;
+  shape.x = centerWorld.x - shape.widthPx / 2;
+  shape.y = centerWorld.y - shape.heightPx / 2;
   shape.rotation = original.rotation || 0;
   appState.project.activeGuides = snap.guides;
 }
