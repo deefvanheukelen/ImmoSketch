@@ -104,6 +104,11 @@ function getWindowGeometry(shape) {
 
 function appendWindowShape(layer, shape) {
   const geometry = getWindowGeometry(shape);
+  layer.appendChild(createSvgEl('polygon', {
+    points: [geometry.a1, geometry.a2, geometry.b2, geometry.b1].map((p) => `${p.x},${p.y}`).join(' '),
+    class: 'window-face',
+    'data-shape-id': shape.id,
+  }));
   layer.appendChild(createSvgEl('line', {
     x1: shape.x1, y1: shape.y1, x2: shape.x2, y2: shape.y2, class: 'shape-hit-line', 'data-shape-id': shape.id,
   }));
@@ -295,6 +300,31 @@ function drawSelection(layer) {
   }
 }
 
+
+function appendWindowDimensionText(layer, shape) {
+  const mid = getLineMidpoint(shape);
+  const dx = shape.x2 - shape.x1;
+  const dy = shape.y2 - shape.y1;
+  const len = Math.hypot(dx, dy) || 1;
+  let nx = -dy / len;
+  let ny = dx / len;
+  if (ny < 0 || (Math.abs(ny) < 0.001 && nx < 0)) {
+    nx *= -1;
+    ny *= -1;
+  }
+  const offset = 18;
+  const pos = { x: mid.x + nx * offset, y: mid.y + ny * offset };
+  const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
+  const textEl = createSvgEl('text', {
+    x: pos.x,
+    y: pos.y,
+    class: 'window-dimension-text',
+    transform: `rotate(${normalizeReadableAngle(angle)} ${pos.x} ${pos.y})`,
+  });
+  textEl.textContent = `${Math.round(pxToCm(getLineLengthPx(shape)))}`;
+  layer.appendChild(textEl);
+}
+
 function normalizeReadableAngle(angleDeg) {
   let angle = angleDeg % 360;
   if (angle > 180) angle -= 360;
@@ -316,34 +346,12 @@ function appendAlignedDimensionText(layer, textValue, position, angleDeg) {
 }
 
 function drawDimensions(layer) {
+  appState.project.shapes.forEach((shape) => {
+    if (isWindowShape(shape)) appendWindowDimensionText(layer, shape);
+  });
+
   const selected = getSelectedShape();
   if (!selected) return;
-
-  if (selected.type === 'line' && isWindowShape(selected)) {
-    const mid = getLineMidpoint(selected);
-    const dx = selected.x2 - selected.x1;
-    const dy = selected.y2 - selected.y1;
-    const len = Math.hypot(dx, dy) || 1;
-    let nx = -dy / len;
-    let ny = dx / len;
-    if (ny < 0 || (Math.abs(ny) < 0.001 && nx < 0)) {
-      nx *= -1;
-      ny *= -1;
-    }
-    const offset = 18;
-    const pos = { x: mid.x + nx * offset, y: mid.y + ny * offset };
-    const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
-    const textEl = createSvgEl('text', {
-      x: pos.x,
-      y: pos.y,
-      class: 'window-dimension-text',
-      transform: `rotate(${normalizeReadableAngle(angle)} ${pos.x} ${pos.y})`,
-    });
-    textEl.textContent = `${Math.round(pxToCm(getLineLengthPx(selected)))}`;
-    layer.appendChild(textEl);
-    return;
-  }
-
   if (selected.type !== 'rect') return;
 
   const corners = getRectCorners(selected);
