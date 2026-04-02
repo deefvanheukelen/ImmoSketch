@@ -11,6 +11,8 @@ import {
   SVG_HEIGHT,
   isRectQuarterTurn,
   isDoorShape,
+  normalizeAngle,
+  getShapeHandleSessionBaseAngle,
 } from './state.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -79,14 +81,41 @@ function appendDoorShape(layer, shape) {
   layer.appendChild(createSvgEl('path', { d: arcPath, class: 'shape-line', 'data-shape-id': shape.id, fill: 'none' }));
 }
 
-function getDoorMoveHandlePoint(shape) {
+function getAdaptiveHandleOffsetPx(basePx = 54, maxPx = 110) {
+  const zoom = Math.max(appState.view.zoom || 1, 0.01);
+  const zoomOutBoost = zoom < 1 ? (1 - zoom) * 0.95 : 0;
+  return Math.min(maxPx, basePx * (1 + zoomOutBoost));
+}
+
+function getSelectionHandleAngleDeg(shape) {
+  const selected = appState.project.selection;
+  const baseAngle = selected?.handleBaseAngle ?? getShapeHandleSessionBaseAngle(shape);
+  const currentAngle = getShapeHandleSessionBaseAngle(shape);
+  return normalizeAngle(currentAngle - baseAngle);
+}
+
+function rotateVector(x, y, angleDeg) {
+  const rad = (angleDeg * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  return { x: x * cos - y * sin, y: x * sin + y * cos };
+}
+
+function getRectTopBottomHandlePoints(shape) {
   const corners = getRectCorners(shape);
   const center = getRectCenter(shape);
-  const bottomMid = { x: (corners[2].x + corners[3].x) / 2, y: (corners[2].y + corners[3].y) / 2 };
-  const vx = bottomMid.x - center.x;
-  const vy = bottomMid.y - center.y;
-  const len = Math.hypot(vx, vy) || 1;
-  return { x: bottomMid.x + (vx / len) * 34, y: bottomMid.y + (vy / len) * 34 };
+  const direction = rotateVector(0, -1, getSelectionHandleAngleDeg(shape));
+  const projections = corners.map((point) => ((point.x - center.x) * direction.x) + ((point.y - center.y) * direction.y));
+  const halfExtent = Math.max(...projections);
+  const offset = getAdaptiveHandleOffsetPx() / Math.max(appState.view.zoom || 1, 0.01);
+  return {
+    top: { x: center.x + direction.x * (halfExtent + offset), y: center.y + direction.y * (halfExtent + offset) },
+    bottom: { x: center.x - direction.x * (halfExtent + offset), y: center.y - direction.y * (halfExtent + offset) },
+  };
+}
+
+function getDoorMoveHandlePoint(shape) {
+  return getRectTopBottomHandlePoints(shape).bottom;
 }
 
 function drawShapes(layer) {
@@ -169,14 +198,11 @@ function drawSelection(layer) {
         appendHandleCircle(layer, point, point.handle, { visibleRadius: 8, hitRadius: 22, className: 'handle side-handle' });
       });
     }
-    const topMid = { x: (corners[0].x + corners[1].x) / 2, y: (corners[0].y + corners[1].y) / 2 };
-    const dx = topMid.x - center.x;
-    const dy = topMid.y - center.y;
-    const len = Math.hypot(dx, dy) || 1;
-    const rotatePoint = { x: topMid.x + (dx / len) * 38, y: topMid.y + (dy / len) * 38 };
-    layer.appendChild(createSvgEl('line', { x1: topMid.x, y1: topMid.y, x2: rotatePoint.x, y2: rotatePoint.y, class: 'rotate-link' }));
-    appendHandleCircle(layer, rotatePoint, 'rotate', { visibleRadius: 10, hitRadius: 26, className: 'rotate-handle' });
+    const handlePoints = getRectTopBottomHandlePoints(selected);
+    layer.appendChild(createSvgEl('line', { x1: center.x, y1: center.y, x2: handlePoints.top.x, y2: handlePoints.top.y, class: 'rotate-link' }));
+    appendHandleCircle(layer, handlePoints.top, 'rotate', { visibleRadius: 10, hitRadius: 26, className: 'rotate-handle' });
     if (isDoorShape(selected)) {
+      layer.appendChild(createSvgEl('line', { x1: center.x, y1: center.y, x2: handlePoints.bottom.x, y2: handlePoints.bottom.y, class: 'rotate-link' }));
       appendHandleRect(layer, getDoorMoveHandlePoint(selected), 'door-move');
     }
     return;
@@ -187,19 +213,19 @@ function drawSelection(layer) {
     appendHandleCircle(layer, { x: selected.x2, y: selected.y2 }, 'line-end');
     const cx = (selected.x1 + selected.x2) / 2;
     const cy = (selected.y1 + selected.y2) / 2;
-    layer.appendChild(createSvgEl('line', { x1: cx, y1: cy, x2: cx, y2: cy - 32, class: 'rotate-link' }));
-    appendHandleCircle(layer, { x: cx, y: cy - 32 }, 'rotate', { visibleRadius: 10, hitRadius: 26, className: 'rotate-handle' });
-    const dx = selected.x2 - selected.x1;
-    const dy = selected.y2 - selected.y1;
-    const len = Math.hypot(dx, dy) || 1;
-    let nx = -dy / len;
-    let ny = dx / len;
-    if (ny < 0 || (Math.abs(ny) < 0.001 && nx < 0)) {
-      nx *= -1;
-      ny *= -1;
-    }
-    const handleCenter = { x: cx + nx * 38, y: cy + ny * 38 };
-    appendHandleRect(layer, handleCenter, 'line-move');
+    const direction = rotateVector(0, -1, getSelectionHandleAngleDeg(selected));
+    const projections = [
+      ((selected.x1 - cx) * direction.x) + ((selected.y1 - cy) * direction.y),
+      ((selected.x2 - cx) * direction.x) + ((selected.y2 - cy) * direction.y),
+    ];
+    const halfExtent = Math.max(...projections);
+    const offset = getAdaptiveHandleOffsetPx() / Math.max(appState.view.zoom || 1, 0.01);
+    const rotatePoint = { x: cx + direction.x * (halfExtent + offset), y: cy + direction.y * (halfExtent + offset) };
+    const movePoint = { x: cx - direction.x * (halfExtent + offset), y: cy - direction.y * (halfExtent + offset) };
+    layer.appendChild(createSvgEl('line', { x1: cx, y1: cy, x2: rotatePoint.x, y2: rotatePoint.y, class: 'rotate-link' }));
+    appendHandleCircle(layer, rotatePoint, 'rotate', { visibleRadius: 10, hitRadius: 26, className: 'rotate-handle' });
+    layer.appendChild(createSvgEl('line', { x1: cx, y1: cy, x2: movePoint.x, y2: movePoint.y, class: 'rotate-link' }));
+    appendHandleRect(layer, movePoint, 'line-move');
   }
 }
 

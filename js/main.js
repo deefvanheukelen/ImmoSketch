@@ -19,6 +19,7 @@ import {
   SVG_HEIGHT,
   getDefaultShapeMetrics,
   isDoorShape,
+  getShapeHandleSessionBaseAngle,
 } from './state.js';
 import {
   renderScene,
@@ -94,14 +95,41 @@ function getDoorSnapPoints(shape) {
   ];
 }
 
-function getDoorMoveHandlePoint(shape) {
+function getAdaptiveHandleOffsetPx(basePx = 54, maxPx = 110) {
+  const zoom = Math.max(appState.view.zoom || 1, 0.01);
+  const zoomOutBoost = zoom < 1 ? (1 - zoom) * 0.95 : 0;
+  return Math.min(maxPx, basePx * (1 + zoomOutBoost));
+}
+
+function getSelectionHandleAngleDeg(shape) {
+  const selected = appState.project.selection;
+  const baseAngle = selected?.handleBaseAngle ?? getShapeHandleSessionBaseAngle(shape);
+  const currentAngle = getShapeHandleSessionBaseAngle(shape);
+  return normalizeAngle(currentAngle - baseAngle);
+}
+
+function rotateVector(x, y, angleDeg) {
+  const rad = (angleDeg * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  return { x: x * cos - y * sin, y: x * sin + y * cos };
+}
+
+function getRectTopBottomHandlePoints(shape) {
   const corners = getRectCorners(shape);
   const center = getRectCenter(shape);
-  const bottomMid = { x: (corners[2].x + corners[3].x) / 2, y: (corners[2].y + corners[3].y) / 2 };
-  const vx = bottomMid.x - center.x;
-  const vy = bottomMid.y - center.y;
-  const len = Math.hypot(vx, vy) || 1;
-  return { x: bottomMid.x + (vx / len) * 34, y: bottomMid.y + (vy / len) * 34 };
+  const direction = rotateVector(0, -1, getSelectionHandleAngleDeg(shape));
+  const projections = corners.map((point) => ((point.x - center.x) * direction.x) + ((point.y - center.y) * direction.y));
+  const halfExtent = Math.max(...projections);
+  const offset = getAdaptiveHandleOffsetPx() / Math.max(appState.view.zoom || 1, 0.01);
+  return {
+    top: { x: center.x + direction.x * (halfExtent + offset), y: center.y + direction.y * (halfExtent + offset) },
+    bottom: { x: center.x - direction.x * (halfExtent + offset), y: center.y - direction.y * (halfExtent + offset) },
+  };
+}
+
+function getDoorMoveHandlePoint(shape) {
+  return getRectTopBottomHandlePoints(shape).bottom;
 }
 
 
@@ -113,12 +141,7 @@ function getSelectedHandleAnchors(shape) {
   if (!shape) return [];
   if (shape.type === 'rect') {
     const corners = getRectCorners(shape);
-    const center = getRectCenter(shape);
-    const topMid = { x: (corners[0].x + corners[1].x) / 2, y: (corners[0].y + corners[1].y) / 2 };
-    const vx = topMid.x - center.x;
-    const vy = topMid.y - center.y;
-    const len = Math.hypot(vx, vy) || 1;
-    const rotatePoint = { x: topMid.x + (vx / len) * 38, y: topMid.y + (vy / len) * 38 };
+    const { top: rotatePoint } = getRectTopBottomHandlePoints(shape);
     const cornerAnchors = corners.map((point, index) => ({ name: `resize-${index}`, point, threshold: 30 }));
     if (isDoorShape(shape)) {
       return [
@@ -139,19 +162,19 @@ function getSelectedHandleAnchors(shape) {
   if (shape.type === 'line') {
     const cx = (shape.x1 + shape.x2) / 2;
     const cy = (shape.y1 + shape.y2) / 2;
-    const dx = shape.x2 - shape.x1;
-    const dy = shape.y2 - shape.y1;
-    const len = Math.hypot(dx, dy) || 1;
-    let nx = -dy / len;
-    let ny = dx / len;
-    if (ny < 0 || (Math.abs(ny) < 0.001 && nx < 0)) {
-      nx *= -1; ny *= -1;
-    }
+    const center = { x: cx, y: cy };
+    const direction = rotateVector(0, -1, getSelectionHandleAngleDeg(shape));
+    const projections = [
+      ((shape.x1 - cx) * direction.x) + ((shape.y1 - cy) * direction.y),
+      ((shape.x2 - cx) * direction.x) + ((shape.y2 - cy) * direction.y),
+    ];
+    const halfExtent = Math.max(...projections);
+    const offset = getAdaptiveHandleOffsetPx() / Math.max(appState.view.zoom || 1, 0.01);
     return [
       { name: 'line-start', point: { x: shape.x1, y: shape.y1 }, threshold: 30 },
       { name: 'line-end', point: { x: shape.x2, y: shape.y2 }, threshold: 30 },
-      { name: 'rotate', point: { x: cx, y: cy - 32 }, threshold: 34 },
-      { name: 'line-move', point: { x: cx + nx * 38, y: cy + ny * 38 }, threshold: 34 },
+      { name: 'rotate', point: { x: center.x + direction.x * (halfExtent + offset), y: center.y + direction.y * (halfExtent + offset) }, threshold: 40 },
+      { name: 'line-move', point: { x: center.x - direction.x * (halfExtent + offset), y: center.y - direction.y * (halfExtent + offset) }, threshold: 40 },
     ];
   }
   return [];

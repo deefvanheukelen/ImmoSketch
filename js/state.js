@@ -47,7 +47,7 @@ export const appState = {
   },
   project: {
     settings: {
-      scalePxPerCm: 1.5,
+      scalePxPerCm: 0.5,
       snapEnabled: true,
       snapThresholdPx: 34,
       guideThresholdPx: 24,
@@ -66,12 +66,27 @@ export function setSelectedTool(tool) {
   appState.selectedTool = tool;
 }
 
+export function getShapeHandleSessionBaseAngle(shape) {
+  if (!shape) return 0;
+  if (shape.type === 'rect') return normalizeAngle(shape.rotation || 0);
+  if (shape.type === 'line') return normalizeAngle((Math.atan2(shape.y2 - shape.y1, shape.x2 - shape.x1) * 180) / Math.PI);
+  return 0;
+}
+
 export function clearSelection() {
   appState.project.selection = null;
 }
 
 export function setSelection(selection) {
-  appState.project.selection = selection;
+  if (!selection || selection.type !== 'shape') {
+    appState.project.selection = selection;
+    return;
+  }
+  const shape = appState.project.shapes.find((item) => item.id === selection.id) || null;
+  appState.project.selection = {
+    ...selection,
+    handleBaseAngle: getShapeHandleSessionBaseAngle(shape),
+  };
 }
 
 export function getSelectedShape() {
