@@ -184,3 +184,8 @@ button, input { font: inherit; }
 }
 
 .move-handle { fill: #ffffff; }
+
+.move-handle { fill: #ffffff; }
+.edge-dimension-text {
+  font-size: 20px;
+}

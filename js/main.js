@@ -426,6 +426,60 @@ function getProspectivePlacementPoints(tool, centerPoint) {
   return getRectSnapPoints(temp);
 }
 
+
+function getRectBoundsPoints(shape) {
+  const corners = getRectCorners(shape);
+  const xs = corners.map((p) => p.x);
+  const ys = corners.map((p) => p.y);
+  return {
+    minX: Math.min(...xs),
+    maxX: Math.max(...xs),
+    minY: Math.min(...ys),
+    maxY: Math.max(...ys),
+    centerX: (Math.min(...xs) + Math.max(...xs)) / 2,
+    centerY: (Math.min(...ys) + Math.max(...ys)) / 2,
+  };
+}
+
+function getRectAxisSnap(shape, excludeShapeId = null) {
+  const threshold = appState.project.settings.snapThresholdPx;
+  const { axisXs, axisYs, points } = collectSnapCandidates(excludeShapeId);
+  const candidateXs = [...axisXs, ...points.map((p) => p.x)];
+  const candidateYs = [...axisYs, ...points.map((p) => p.y)];
+  const bounds = getRectBoundsPoints(shape);
+  const anchorsX = [bounds.minX, bounds.centerX, bounds.maxX];
+  const anchorsY = [bounds.minY, bounds.centerY, bounds.maxY];
+  let dx = 0;
+  let dy = 0;
+  let bestX = Infinity;
+  let bestY = Infinity;
+  let guideX = null;
+  let guideY = null;
+
+  for (const anchor of anchorsX) {
+    for (const x of candidateXs) {
+      const diff = x - anchor;
+      if (Math.abs(diff) <= threshold && Math.abs(diff) < bestX) {
+        bestX = Math.abs(diff);
+        dx = diff;
+        guideX = makeGuide('vertical', x);
+      }
+    }
+  }
+  for (const anchor of anchorsY) {
+    for (const y of candidateYs) {
+      const diff = y - anchor;
+      if (Math.abs(diff) <= threshold && Math.abs(diff) < bestY) {
+        bestY = Math.abs(diff);
+        dy = diff;
+        guideY = makeGuide('horizontal', y);
+      }
+    }
+  }
+
+  return { dx, dy, guides: [guideX, guideY].filter(Boolean) };
+}
+
 function getLineAxisLockPoint(original, rawPoint) {
   const handle = appState.pointer.handle;
   const fixed = handle === 'line-start' ? { x: original.x2, y: original.y2 } : { x: original.x1, y: original.y1 };
@@ -529,8 +583,28 @@ function applyMagneticSnap(movingPoints, excludeShapeId = null) {
 function snapNewShapePlacement(tool, point) {
   const movingPoints = getProspectivePlacementPoints(tool, point);
   const result = applyMagneticSnap(movingPoints, null);
-  appState.project.activeGuides = result.guides;
-  return { x: point.x + result.dx, y: point.y + result.dy };
+  let finalDx = result.dx;
+  let finalDy = result.dy;
+  let finalGuides = [...result.guides];
+
+  if (tool !== 'line') {
+    const { widthPx, heightPx } = getDefaultShapeMetrics(tool);
+    const tempRect = {
+      type: 'rect',
+      x: point.x - widthPx / 2 + finalDx,
+      y: point.y - heightPx / 2 + finalDy,
+      widthPx,
+      heightPx,
+      rotation: 0,
+    };
+    const axisSnap = getRectAxisSnap(tempRect, null);
+    finalDx += axisSnap.dx;
+    finalDy += axisSnap.dy;
+    finalGuides = dedupeGuides([...finalGuides, ...axisSnap.guides]);
+  }
+
+  appState.project.activeGuides = finalGuides;
+  return { x: point.x + finalDx, y: point.y + finalDy };
 }
 
 function moveRectWithSnap(selected, point) {
@@ -540,9 +614,10 @@ function moveRectWithSnap(selected, point) {
   const temp = { ...original, x: original.x + dx, y: original.y + dy };
   const movingPoints = getRectSnapPoints(temp);
   const snap = applyMagneticSnap(movingPoints, selected.id);
-  selected.x = temp.x + snap.dx;
-  selected.y = temp.y + snap.dy;
-  appState.project.activeGuides = snap.guides;
+  const axisSnap = getRectAxisSnap({ ...temp, x: temp.x + snap.dx, y: temp.y + snap.dy }, selected.id);
+  selected.x = temp.x + snap.dx + axisSnap.dx;
+  selected.y = temp.y + snap.dy + axisSnap.dy;
+  appState.project.activeGuides = dedupeGuides([...(snap.guides || []), ...(axisSnap.guides || [])]);
 }
 
 function moveLineWithSnap(selected, point) {

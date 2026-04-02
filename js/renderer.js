@@ -3,6 +3,7 @@ import {
   getSelectedShape,
   getRectCenter,
   getRectCorners,
+  getRectEdges,
   getLineLengthPx,
   pxToCm,
   rebuildDerivedFaces,
@@ -118,23 +119,61 @@ function drawSelection(layer) {
       nx *= -1;
       ny *= -1;
     }
-    const handleCenter = { x: cx + nx * 28, y: cy + ny * 28 };
-    layer.appendChild(createSvgEl('rect', { x: handleCenter.x - 8, y: handleCenter.y - 8, width: 16, height: 16, rx: 2, ry: 2, class: 'handle move-handle', 'data-handle': 'line-move' }));
+    const handleCenter = { x: cx + nx * 38, y: cy + ny * 38 };
+    layer.appendChild(createSvgEl('rect', { x: handleCenter.x - 10, y: handleCenter.y - 10, width: 20, height: 20, rx: 2, ry: 2, class: 'handle move-handle', 'data-handle': 'line-move' }));
   }
+}
+
+function normalizeReadableAngle(angleDeg) {
+  let angle = angleDeg % 360;
+  if (angle > 180) angle -= 360;
+  if (angle <= -180) angle += 360;
+  if (angle > 90) angle -= 180;
+  if (angle < -90) angle += 180;
+  return angle;
+}
+
+function appendAlignedDimensionText(layer, textValue, position, angleDeg) {
+  const textEl = createSvgEl('text', {
+    x: position.x,
+    y: position.y,
+    class: 'dimension-text edge-dimension-text',
+    transform: `rotate(${normalizeReadableAngle(angleDeg)} ${position.x} ${position.y})`,
+  });
+  textEl.textContent = textValue;
+  layer.appendChild(textEl);
 }
 
 function drawDimensions(layer) {
   const selected = getSelectedShape();
-  if (!selected) return;
-  if (selected.type === 'rect') {
-    const center = getRectCenter(selected);
-    layer.appendChild(createSvgEl('text', { x: center.x, y: center.y, class: 'dimension-text' })).textContent = `${Math.round(pxToCm(selected.widthPx))} × ${Math.round(pxToCm(selected.heightPx))}`;
-  }
-  if (selected.type === 'line') {
-    const cx = (selected.x1 + selected.x2) / 2;
-    const cy = (selected.y1 + selected.y2) / 2 + 28;
-    layer.appendChild(createSvgEl('text', { x: cx, y: cy, class: 'dimension-text' })).textContent = `${Math.round(pxToCm(getLineLengthPx(selected)))} cm`;
-  }
+  if (!selected || selected.type !== 'rect') return;
+
+  const corners = getRectCorners(selected);
+  const center = getRectCenter(selected);
+  const edges = getRectEdges(selected);
+  const edgeInset = 22;
+
+  const topMid = { x: (corners[0].x + corners[1].x) / 2, y: (corners[0].y + corners[1].y) / 2 };
+  const rightMid = { x: (corners[1].x + corners[2].x) / 2, y: (corners[1].y + corners[2].y) / 2 };
+
+  const topPos = movePointTowards(topMid, center, edgeInset);
+  const rightPos = movePointTowards(rightMid, center, edgeInset);
+
+  const topAngle = (Math.atan2(edges[0][1].y - edges[0][0].y, edges[0][1].x - edges[0][0].x) * 180) / Math.PI;
+  const rightAngle = (Math.atan2(edges[1][1].y - edges[1][0].y, edges[1][1].x - edges[1][0].x) * 180) / Math.PI;
+
+  appendAlignedDimensionText(layer, `${Math.round(pxToCm(selected.widthPx))} cm`, topPos, topAngle);
+  appendAlignedDimensionText(layer, `${Math.round(pxToCm(selected.heightPx))} cm`, rightPos, rightAngle);
+}
+
+function movePointTowards(from, to, distance) {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const len = Math.hypot(dx, dy) || 1;
+  return {
+    x: from.x + (dx / len) * distance,
+    y: from.y + (dy / len) * distance,
+  };
 }
 
 export function updateTopbarVisibility() {

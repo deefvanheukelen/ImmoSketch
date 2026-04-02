@@ -49,10 +49,10 @@ export const appState = {
     settings: {
       scalePxPerCm: 0.5,
       snapEnabled: true,
-      snapThresholdPx: 22,
-      guideThresholdPx: 18,
+      snapThresholdPx: 34,
+      guideThresholdPx: 24,
       rotateSnapDeg: 45,
-      lineSnapDistancePx: 14,
+      lineSnapDistancePx: 22,
       lineAxisBreakPx: 18,
     },
     selection: null,
