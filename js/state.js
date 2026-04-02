@@ -47,7 +47,7 @@ export const appState = {
   },
   project: {
     settings: {
-      scalePxPerCm: 0.5,
+      scalePxPerCm: 1.5,
       snapEnabled: true,
       snapThresholdPx: 34,
       guideThresholdPx: 24,
