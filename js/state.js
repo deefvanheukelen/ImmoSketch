@@ -53,6 +53,7 @@ export const appState = {
       guideThresholdPx: 18,
       rotateSnapDeg: 45,
       lineSnapDistancePx: 14,
+      lineAxisBreakPx: 18,
     },
     selection: null,
     shapes: [],
@@ -77,6 +78,16 @@ export function getSelectedShape() {
   const selected = appState.project.selection;
   if (!selected || selected.type !== 'shape') return null;
   return appState.project.shapes.find((shape) => shape.id === selected.id) || null;
+}
+
+
+export function getDefaultShapeMetrics(tool) {
+  const scale = appState.project.settings.scalePxPerCm;
+  if (tool === 'line') {
+    return { lengthPx: TOOL_DEFAULTS.line.lengthCm * scale };
+  }
+  const fallback = TOOL_DEFAULTS[tool] || TOOL_DEFAULTS.square;
+  return { widthPx: fallback.widthCm * scale, heightPx: fallback.heightCm * scale };
 }
 
 export function createShapeFromTool(tool, x, y) {

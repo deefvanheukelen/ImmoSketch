@@ -109,6 +109,17 @@ function drawSelection(layer) {
     const cy = (selected.y1 + selected.y2) / 2;
     layer.appendChild(createSvgEl('line', { x1: cx, y1: cy, x2: cx, y2: cy - 32, class: 'rotate-link' }));
     layer.appendChild(createSvgEl('circle', { cx, cy: cy - 32, r: 10, class: 'rotate-handle', 'data-handle': 'rotate' }));
+    const dx = selected.x2 - selected.x1;
+    const dy = selected.y2 - selected.y1;
+    const len = Math.hypot(dx, dy) || 1;
+    let nx = -dy / len;
+    let ny = dx / len;
+    if (ny < 0 || (Math.abs(ny) < 0.001 && nx < 0)) {
+      nx *= -1;
+      ny *= -1;
+    }
+    const handleCenter = { x: cx + nx * 28, y: cy + ny * 28 };
+    layer.appendChild(createSvgEl('rect', { x: handleCenter.x - 8, y: handleCenter.y - 8, width: 16, height: 16, rx: 2, ry: 2, class: 'handle move-handle', 'data-handle': 'line-move' }));
   }
 }
 

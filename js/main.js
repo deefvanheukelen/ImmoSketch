@@ -17,6 +17,7 @@ import {
   getLineLengthPx,
   SVG_WIDTH,
   SVG_HEIGHT,
+  getDefaultShapeMetrics,
 } from './state.js';
 import {
   renderScene,
@@ -274,8 +275,9 @@ function onCanvasPointerMove(event) {
     return;
   }
 
-  if (appState.pointer.mode === 'move-line-end' && selected?.type === 'line') {
-    moveLineEndpoint(selected, point);
+  if ((appState.pointer.mode === 'move-line-end' || appState.pointer.mode === 'move-line-body') && selected?.type === 'line') {
+    if (appState.pointer.mode === 'move-line-end') moveLineEndpoint(selected, point);
+    else moveLineBodyWithSnap(selected, point);
     refresh();
     return;
   }
@@ -311,6 +313,7 @@ function startHandleInteraction(event, point, handle) {
   let mode = 'idle';
   if ((handle.startsWith('resize-') || handle.startsWith('side-')) && shape.type === 'rect') mode = 'resize-rect';
   else if ((handle === 'line-start' || handle === 'line-end') && shape.type === 'line') mode = 'move-line-end';
+  else if (handle === 'line-move' && shape.type === 'line') mode = 'move-line-body';
   else if (handle === 'rotate') mode = 'rotate';
   appState.pointer = {
     mode,
@@ -393,11 +396,63 @@ function dedupeGuides(guides) {
   });
 }
 
+function getRectSnapPoints(shape) {
+  const corners = getRectCorners(shape);
+  const center = getRectCenter(shape);
+  const points = [...corners, center];
+  getRectEdges(shape).forEach(([a, b]) => points.push({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }));
+  return points;
+}
+
+function getProspectivePlacementPoints(tool, centerPoint) {
+  if (tool === 'line') {
+    const { lengthPx } = getDefaultShapeMetrics('line');
+    const half = lengthPx / 2;
+    return [
+      { x: centerPoint.x - half, y: centerPoint.y },
+      { x: centerPoint.x + half, y: centerPoint.y },
+      { x: centerPoint.x, y: centerPoint.y },
+    ];
+  }
+  const { widthPx, heightPx } = getDefaultShapeMetrics(tool);
+  const temp = {
+    type: 'rect',
+    x: centerPoint.x - widthPx / 2,
+    y: centerPoint.y - heightPx / 2,
+    widthPx,
+    heightPx,
+    rotation: 0,
+  };
+  return getRectSnapPoints(temp);
+}
+
+function getLineAxisLockPoint(original, rawPoint) {
+  const handle = appState.pointer.handle;
+  const fixed = handle === 'line-start' ? { x: original.x2, y: original.y2 } : { x: original.x1, y: original.y1 };
+  const movingOriginal = handle === 'line-start' ? { x: original.x1, y: original.y1 } : { x: original.x2, y: original.y2 };
+  const axis = { x: movingOriginal.x - fixed.x, y: movingOriginal.y - fixed.y };
+  const axisLen = Math.hypot(axis.x, axis.y) || 1;
+  const ux = axis.x / axisLen;
+  const uy = axis.y / axisLen;
+  const vx = rawPoint.x - fixed.x;
+  const vy = rawPoint.y - fixed.y;
+  const parallel = vx * ux + vy * uy;
+  const perp = vx * (-uy) + vy * ux;
+  const breakPx = appState.project.settings.lineAxisBreakPx || 18;
+  if (Math.abs(perp) <= breakPx) {
+    return { x: fixed.x + ux * parallel, y: fixed.y + uy * parallel, axisLocked: true };
+  }
+  return { ...rawPoint, axisLocked: false };
+}
+
 function applyMagneticSnap(movingPoints, excludeShapeId = null) {
   const threshold = appState.project.settings.snapThresholdPx;
   const guideThreshold = appState.project.settings.guideThresholdPx;
   const lineThreshold = appState.project.settings.lineSnapDistancePx;
   const { points, lines, axisXs, axisYs } = collectSnapCandidates(excludeShapeId);
+  const candidateXs = [...axisXs];
+  const candidateYs = [...axisYs];
+  points.forEach((p) => { candidateXs.push(p.x); candidateYs.push(p.y); });
   let bestDx = 0;
   let bestDy = 0;
   let bestDistX = Infinity;
@@ -405,7 +460,7 @@ function applyMagneticSnap(movingPoints, excludeShapeId = null) {
   const guides = [];
 
   for (const mp of movingPoints) {
-    for (const x of axisXs) {
+    for (const x of candidateXs) {
       const dx = x - mp.x;
       if (Math.abs(dx) <= threshold && Math.abs(dx) < bestDistX) {
         bestDistX = Math.abs(dx);
@@ -413,7 +468,7 @@ function applyMagneticSnap(movingPoints, excludeShapeId = null) {
         guides[0] = makeGuide('vertical', x);
       }
     }
-    for (const y of axisYs) {
+    for (const y of candidateYs) {
       const dy = y - mp.y;
       if (Math.abs(dy) <= threshold && Math.abs(dy) < bestDistY) {
         bestDistY = Math.abs(dy);
@@ -462,8 +517,8 @@ function applyMagneticSnap(movingPoints, excludeShapeId = null) {
 
   if (result.guides.length === 0) {
     for (const mp of movingPoints) {
-      axisXs.forEach((x) => { if (Math.abs(x - mp.x) <= guideThreshold) result.guides.push(makeGuide('vertical', x)); });
-      axisYs.forEach((y) => { if (Math.abs(y - mp.y) <= guideThreshold) result.guides.push(makeGuide('horizontal', y)); });
+      candidateXs.forEach((x) => { if (Math.abs(x - mp.x) <= guideThreshold) result.guides.push(makeGuide('vertical', x)); });
+      candidateYs.forEach((y) => { if (Math.abs(y - mp.y) <= guideThreshold) result.guides.push(makeGuide('horizontal', y)); });
     }
     result.guides = dedupeGuides(result.guides);
   }
@@ -472,7 +527,8 @@ function applyMagneticSnap(movingPoints, excludeShapeId = null) {
 }
 
 function snapNewShapePlacement(tool, point) {
-  const result = applyMagneticSnap([point], null);
+  const movingPoints = getProspectivePlacementPoints(tool, point);
+  const result = applyMagneticSnap(movingPoints, null);
   appState.project.activeGuides = result.guides;
   return { x: point.x + result.dx, y: point.y + result.dy };
 }
@@ -482,8 +538,7 @@ function moveRectWithSnap(selected, point) {
   const dx = point.x - appState.pointer.startWorld.x;
   const dy = point.y - appState.pointer.startWorld.y;
   const temp = { ...original, x: original.x + dx, y: original.y + dy };
-  const movingPoints = [...getRectCorners(temp), getRectCenter(temp)];
-  getRectEdges(temp).forEach(([a, b]) => movingPoints.push({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }));
+  const movingPoints = getRectSnapPoints(temp);
   const snap = applyMagneticSnap(movingPoints, selected.id);
   selected.x = temp.x + snap.dx;
   selected.y = temp.y + snap.dy;
@@ -562,14 +617,33 @@ function resizeRectFromHandle(shape, point) {
 }
 
 function moveLineEndpoint(shape, point) {
-  const snap = applyMagneticSnap([point], shape.id);
-  const snapped = { x: point.x + snap.dx, y: point.y + snap.dy };
+  const original = appState.pointer.original;
+  const lockedPoint = getLineAxisLockPoint(original, point);
+  const snap = applyMagneticSnap([lockedPoint], shape.id);
+  const snapped = { x: lockedPoint.x + snap.dx, y: lockedPoint.y + snap.dy };
   if (appState.pointer.handle === 'line-start') {
     shape.x1 = snapped.x; shape.y1 = snapped.y;
+    if (lockedPoint.axisLocked) { shape.x2 = original.x2; shape.y2 = original.y2; }
   }
   if (appState.pointer.handle === 'line-end') {
     shape.x2 = snapped.x; shape.y2 = snapped.y;
+    if (lockedPoint.axisLocked) { shape.x1 = original.x1; shape.y1 = original.y1; }
   }
+  appState.project.activeGuides = snap.guides;
+}
+
+function moveLineBodyWithSnap(selected, point) {
+  const original = appState.pointer.original;
+  const dx = point.x - appState.pointer.startWorld.x;
+  const dy = point.y - appState.pointer.startWorld.y;
+  const movingStart = { x: original.x1 + dx, y: original.y1 + dy };
+  const movingEnd = { x: original.x2 + dx, y: original.y2 + dy };
+  const movingMid = { x: (movingStart.x + movingEnd.x) / 2, y: (movingStart.y + movingEnd.y) / 2 };
+  const snap = applyMagneticSnap([movingStart, movingEnd, movingMid], selected.id);
+  selected.x1 = movingStart.x + snap.dx;
+  selected.y1 = movingStart.y + snap.dy;
+  selected.x2 = movingEnd.x + snap.dx;
+  selected.y2 = movingEnd.y + snap.dy;
   appState.project.activeGuides = snap.guides;
 }
 
