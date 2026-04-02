@@ -102,9 +102,10 @@ function getAdaptiveHandleOffsetPx(basePx = 54, maxPx = 110) {
 }
 
 function getSelectionHandleAngleDeg(shape) {
-  const selected = appState.project.selection;
-  const baseAngle = selected?.handleBaseAngle ?? getShapeHandleSessionBaseAngle(shape);
   const currentAngle = getShapeHandleSessionBaseAngle(shape);
+  if (shape?.type === 'line') return currentAngle;
+  const selected = appState.project.selection;
+  const baseAngle = selected?.handleBaseAngle ?? currentAngle;
   return normalizeAngle(currentAngle - baseAngle);
 }
 
@@ -132,6 +133,21 @@ function getDoorMoveHandlePoint(shape) {
   return getRectTopBottomHandlePoints(shape).bottom;
 }
 
+function getRectHandleConnectorPoints(shape) {
+  const corners = getRectCorners(shape);
+  const center = getRectCenter(shape);
+  const direction = rotateVector(0, -1, getSelectionHandleAngleDeg(shape));
+  const projections = corners.map((point) => ((point.x - center.x) * direction.x) + ((point.y - center.y) * direction.y));
+  const halfExtent = Math.max(...projections);
+  return {
+    top: { x: center.x + direction.x * halfExtent, y: center.y + direction.y * halfExtent },
+    bottom: { x: center.x - direction.x * halfExtent, y: center.y - direction.y * halfExtent },
+  };
+}
+
+function getResizeHandleSnap(point, shapeId) {
+  return getPointVectorSnap(point, shapeId) || applyMagneticSnap([point], shapeId);
+}
 
 function getHandleWorldThreshold(screenPx = 28) {
   return screenPx / Math.max(appState.view.zoom || 1, 0.01);
@@ -885,7 +901,7 @@ function resizeRectFromHandle(shape, point) {
     const handleIndex = Number(handle.replace('resize-', ''));
     const oppositeIndex = (handleIndex + 2) % 4;
     const fixed = corners[oppositeIndex];
-    const snap = applyMagneticSnap([point], shape.id);
+    const snap = getResizeHandleSnap(point, shape.id);
     const movingWorld = { x: point.x + snap.dx, y: point.y + snap.dy };
     const center = { x: (fixed.x + movingWorld.x) / 2, y: (fixed.y + movingWorld.y) / 2 };
     const unrotFixed = rotatePoint(fixed, center, -angle);
@@ -899,7 +915,7 @@ function resizeRectFromHandle(shape, point) {
     return;
   }
 
-  const snap = applyMagneticSnap([point], shape.id);
+  const snap = getResizeHandleSnap(point, shape.id);
   const snappedLocal = rotatePoint({ x: point.x + snap.dx, y: point.y + snap.dy }, centerOriginal, -angle);
 
   if (handle === 'side-top' || handle === 'side-bottom') {

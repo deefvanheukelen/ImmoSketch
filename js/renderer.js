@@ -88,9 +88,10 @@ function getAdaptiveHandleOffsetPx(basePx = 54, maxPx = 110) {
 }
 
 function getSelectionHandleAngleDeg(shape) {
-  const selected = appState.project.selection;
-  const baseAngle = selected?.handleBaseAngle ?? getShapeHandleSessionBaseAngle(shape);
   const currentAngle = getShapeHandleSessionBaseAngle(shape);
+  if (shape?.type === 'line') return currentAngle;
+  const selected = appState.project.selection;
+  const baseAngle = selected?.handleBaseAngle ?? currentAngle;
   return normalizeAngle(currentAngle - baseAngle);
 }
 
@@ -116,6 +117,18 @@ function getRectTopBottomHandlePoints(shape) {
 
 function getDoorMoveHandlePoint(shape) {
   return getRectTopBottomHandlePoints(shape).bottom;
+}
+
+function getRectHandleConnectorPoints(shape) {
+  const corners = getRectCorners(shape);
+  const center = getRectCenter(shape);
+  const direction = rotateVector(0, -1, getSelectionHandleAngleDeg(shape));
+  const projections = corners.map((point) => ((point.x - center.x) * direction.x) + ((point.y - center.y) * direction.y));
+  const halfExtent = Math.max(...projections);
+  return {
+    top: { x: center.x + direction.x * halfExtent, y: center.y + direction.y * halfExtent },
+    bottom: { x: center.x - direction.x * halfExtent, y: center.y - direction.y * halfExtent },
+  };
 }
 
 function drawShapes(layer) {
@@ -199,10 +212,11 @@ function drawSelection(layer) {
       });
     }
     const handlePoints = getRectTopBottomHandlePoints(selected);
-    layer.appendChild(createSvgEl('line', { x1: center.x, y1: center.y, x2: handlePoints.top.x, y2: handlePoints.top.y, class: 'rotate-link' }));
+    const connectorPoints = getRectHandleConnectorPoints(selected);
+    layer.appendChild(createSvgEl('line', { x1: connectorPoints.top.x, y1: connectorPoints.top.y, x2: handlePoints.top.x, y2: handlePoints.top.y, class: 'rotate-link' }));
     appendHandleCircle(layer, handlePoints.top, 'rotate', { visibleRadius: 10, hitRadius: 26, className: 'rotate-handle' });
     if (isDoorShape(selected)) {
-      layer.appendChild(createSvgEl('line', { x1: center.x, y1: center.y, x2: handlePoints.bottom.x, y2: handlePoints.bottom.y, class: 'rotate-link' }));
+      layer.appendChild(createSvgEl('line', { x1: connectorPoints.bottom.x, y1: connectorPoints.bottom.y, x2: handlePoints.bottom.x, y2: handlePoints.bottom.y, class: 'rotate-link' }));
       appendHandleRect(layer, getDoorMoveHandlePoint(selected), 'door-move');
     }
     return;
