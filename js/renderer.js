@@ -11,6 +11,7 @@ import {
   SVG_HEIGHT,
   isRectQuarterTurn,
   isDoorShape,
+  isWindowShape,
   normalizeAngle,
   getShapeHandleSessionBaseAngle,
 } from './state.js';
