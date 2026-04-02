@@ -2,7 +2,6 @@ export const SVG_WIDTH = 1200;
 export const SVG_HEIGHT = 900;
 
 let idCounter = 1;
-
 function nextId(prefix) {
   idCounter += 1;
   return `${prefix}-${Date.now()}-${idCounter}`;
@@ -35,8 +34,8 @@ export const appState = {
     targetId: null,
     handle: null,
     original: null,
-    rotationMode: null,
     rotationClickCandidate: false,
+    guides: null,
   },
   pinch: {
     active: false,
@@ -44,25 +43,21 @@ export const appState = {
     pointerB: null,
     startDistance: 0,
     startZoom: 1,
-    startPanX: 0,
-    startPanY: 0,
     startWorldMid: null,
-  },
-  guides: {
-    vertical: null,
-    horizontal: null,
   },
   project: {
     settings: {
       scalePxPerCm: 0.5,
       snapEnabled: true,
-      snapThresholdPx: 28,
-      magnetStrengthPx: 80,
+      snapThresholdPx: 22,
+      guideThresholdPx: 18,
       rotateSnapDeg: 45,
+      lineSnapDistancePx: 14,
     },
     selection: null,
     shapes: [],
     derivedFaces: [],
+    activeGuides: [],
   },
 };
 
@@ -78,28 +73,14 @@ export function setSelection(selection) {
   appState.project.selection = selection;
 }
 
-export function clearGuides() {
-  appState.guides.vertical = null;
-  appState.guides.horizontal = null;
-}
-
-export function setGuides(guides) {
-  appState.guides.vertical = guides.vertical ?? null;
-  appState.guides.horizontal = guides.horizontal ?? null;
-}
-
 export function getSelectedShape() {
   const selected = appState.project.selection;
-  if (!selected || selected.type !== 'shape') {
-    return null;
-  }
-
+  if (!selected || selected.type !== 'shape') return null;
   return appState.project.shapes.find((shape) => shape.id === selected.id) || null;
 }
 
 export function createShapeFromTool(tool, x, y) {
   const scale = appState.project.settings.scalePxPerCm;
-
   if (tool === 'line') {
     const lengthPx = TOOL_DEFAULTS.line.lengthCm * scale;
     const shape = {
@@ -114,11 +95,9 @@ export function createShapeFromTool(tool, x, y) {
     setSelection({ type: 'shape', id: shape.id });
     return shape;
   }
-
   const fallback = TOOL_DEFAULTS[tool] || TOOL_DEFAULTS.square;
   const widthPx = fallback.widthCm * scale;
   const heightPx = fallback.heightCm * scale;
-
   const shape = {
     id: nextId(tool),
     type: 'rect',
@@ -129,7 +108,6 @@ export function createShapeFromTool(tool, x, y) {
     heightPx,
     rotation: 0,
   };
-
   appState.project.shapes.push(shape);
   setSelection({ type: 'shape', id: shape.id });
   return shape;
@@ -138,11 +116,7 @@ export function createShapeFromTool(tool, x, y) {
 export function updateSelectedDimensions(widthCm, heightCm) {
   const selected = getSelectedShape();
   const scale = appState.project.settings.scalePxPerCm;
-
-  if (!selected) {
-    return;
-  }
-
+  if (!selected) return;
   if (selected.type === 'rect') {
     const center = getRectCenter(selected);
     selected.widthPx = Math.max(1, widthCm * scale);
@@ -150,14 +124,12 @@ export function updateSelectedDimensions(widthCm, heightCm) {
     selected.x = center.x - selected.widthPx / 2;
     selected.y = center.y - selected.heightPx / 2;
   }
-
   if (selected.type === 'line') {
     const target = Math.max(1, widthCm * scale);
     const angle = Math.atan2(selected.y2 - selected.y1, selected.x2 - selected.x1);
     const cx = (selected.x1 + selected.x2) / 2;
     const cy = (selected.y1 + selected.y2) / 2;
     const half = target / 2;
-
     selected.x1 = cx - Math.cos(angle) * half;
     selected.y1 = cy - Math.sin(angle) * half;
     selected.x2 = cx + Math.cos(angle) * half;
@@ -167,93 +139,58 @@ export function updateSelectedDimensions(widthCm, heightCm) {
 
 export function deleteSelectedShape() {
   const selected = appState.project.selection;
-  if (!selected || selected.type !== 'shape') {
-    return false;
-  }
-
+  if (!selected || selected.type !== 'shape') return false;
   const index = appState.project.shapes.findIndex((shape) => shape.id === selected.id);
   if (index >= 0) {
     appState.project.shapes.splice(index, 1);
     clearSelection();
     return true;
   }
-
   return false;
 }
 
 export function duplicateSelectedShape() {
   const shape = getSelectedShape();
-  if (!shape) {
-    return null;
-  }
-
+  if (!shape) return null;
   let clone;
-
   if (shape.type === 'rect') {
-    clone = {
-      ...shape,
-      id: nextId(shape.tool || 'rect'),
-      x: shape.x + 24,
-      y: shape.y + 24,
-    };
+    clone = { ...shape, id: nextId(shape.tool || 'rect'), x: shape.x + 24, y: shape.y + 24 };
   } else {
-    clone = {
-      ...shape,
-      id: nextId('line'),
-      x1: shape.x1 + 24,
-      y1: shape.y1 + 24,
-      x2: shape.x2 + 24,
-      y2: shape.y2 + 24,
-    };
+    clone = { ...shape, id: nextId('line'), x1: shape.x1 + 24, y1: shape.y1 + 24, x2: shape.x2 + 24, y2: shape.y2 + 24 };
   }
-
   appState.project.shapes.push(clone);
   setSelection({ type: 'shape', id: clone.id });
   return clone;
 }
 
 export function getRectCenter(shape) {
-  return {
-    x: shape.x + shape.widthPx / 2,
-    y: shape.y + shape.heightPx / 2,
-  };
+  return { x: shape.x + shape.widthPx / 2, y: shape.y + shape.heightPx / 2 };
 }
 
 export function getLineLengthPx(shape) {
   return Math.hypot(shape.x2 - shape.x1, shape.y2 - shape.y1);
 }
 
-export function pxToCm(px) {
-  return px / appState.project.settings.scalePxPerCm;
-}
-
-export function cmToPx(cm) {
-  return cm * appState.project.settings.scalePxPerCm;
-}
+export function pxToCm(px) { return px / appState.project.settings.scalePxPerCm; }
+export function cmToPx(cm) { return cm * appState.project.settings.scalePxPerCm; }
 
 export function rotatePoint(point, center, angleRad) {
   const dx = point.x - center.x;
   const dy = point.y - center.y;
   const cos = Math.cos(angleRad);
   const sin = Math.sin(angleRad);
-
-  return {
-    x: center.x + dx * cos - dy * sin,
-    y: center.y + dx * sin + dy * cos,
-  };
+  return { x: center.x + dx * cos - dy * sin, y: center.y + dx * sin + dy * cos };
 }
 
 export function getRectCorners(shape) {
   const center = getRectCenter(shape);
   const angle = ((shape.rotation || 0) * Math.PI) / 180;
-
   const local = [
     { x: shape.x, y: shape.y },
     { x: shape.x + shape.widthPx, y: shape.y },
     { x: shape.x + shape.widthPx, y: shape.y + shape.heightPx },
     { x: shape.x, y: shape.y + shape.heightPx },
   ];
-
   return local.map((point) => rotatePoint(point, center, angle));
 }
 
@@ -269,23 +206,28 @@ export function getRectEdges(shape) {
 
 export function normalizeAngle(angle) {
   let a = angle % 360;
-  if (a < 0) {
-    a += 360;
-  }
+  if (a < 0) a += 360;
   return a;
 }
 
 export function rotateSelectedBy90Clockwise() {
   const shape = getSelectedShape();
-  if (!shape || shape.type !== 'rect') {
-    return;
-  }
-
+  if (!shape || shape.type !== 'rect') return;
   shape.rotation = normalizeAngle((shape.rotation || 0) + 90);
 }
 
 function quantizePoint(point, epsilon = 0.1) {
   return `${Math.round(point.x / epsilon) * epsilon}|${Math.round(point.y / epsilon) * epsilon}`;
+}
+
+function polygonArea(points) {
+  let area = 0;
+  for (let i = 0; i < points.length; i += 1) {
+    const a = points[i];
+    const b = points[(i + 1) % points.length];
+    area += a.x * b.y - b.x * a.y;
+  }
+  return area / 2;
 }
 
 export function rebuildDerivedFaces() {
@@ -295,21 +237,15 @@ export function rebuildDerivedFaces() {
 
   function registerPoint(point) {
     const key = quantizePoint(point);
-    if (!pointMap.has(key)) {
-      pointMap.set(key, { x: point.x, y: point.y, key });
-    }
+    if (!pointMap.has(key)) pointMap.set(key, { x: point.x, y: point.y, key });
     return pointMap.get(key);
   }
 
   function addEdge(a, b, lineId) {
-    if (a.key === b.key) {
-      return;
-    }
-
+    if (a.key === b.key) return;
     if (!adjacency.has(a.key)) adjacency.set(a.key, []);
-    adjacency.get(a.key).push({ to: b.key, lineId });
-
     if (!adjacency.has(b.key)) adjacency.set(b.key, []);
+    adjacency.get(a.key).push({ to: b.key, lineId });
     adjacency.get(b.key).push({ to: a.key, lineId });
   }
 
@@ -321,50 +257,29 @@ export function rebuildDerivedFaces() {
 
   const faces = [];
   const keys = [...pointMap.keys()];
-
-  function pointByKey(key) {
-    return pointMap.get(key);
-  }
-
+  const pointByKey = (key) => pointMap.get(key);
   const seenCycles = new Set();
 
   for (const startKey of keys) {
     const stack = [[startKey, [startKey], new Set()]];
-
     while (stack.length) {
       const [currentKey, path, usedLines] = stack.pop();
       const neighbors = adjacency.get(currentKey) || [];
-
       for (const neighbor of neighbors) {
-        if (usedLines.has(neighbor.lineId)) {
-          continue;
-        }
-
+        if (usedLines.has(neighbor.lineId)) continue;
         if (neighbor.to === startKey && path.length >= 3) {
           const cycleKeys = [...path];
           const canonical = [...cycleKeys].sort().join('>');
-          if (seenCycles.has(canonical)) {
-            continue;
-          }
-
+          if (seenCycles.has(canonical)) continue;
           const polygon = cycleKeys.map(pointByKey);
           const area = polygonArea(polygon);
-
           if (Math.abs(area) > 200) {
             seenCycles.add(canonical);
-            faces.push({
-              id: `derived-${faces.length + 1}`,
-              type: 'derivedFace',
-              points: area > 0 ? polygon : [...polygon].reverse(),
-            });
+            faces.push({ id: `derived-${faces.length + 1}`, type: 'derivedFace', points: area > 0 ? polygon : [...polygon].reverse() });
           }
           continue;
         }
-
-        if (path.includes(neighbor.to) || path.length > 7) {
-          continue;
-        }
-
+        if (path.includes(neighbor.to) || path.length > 7) continue;
         const nextUsed = new Set(usedLines);
         nextUsed.add(neighbor.lineId);
         stack.push([neighbor.to, [...path, neighbor.to], nextUsed]);
@@ -374,28 +289,12 @@ export function rebuildDerivedFaces() {
 
   const uniqueFaces = [];
   const usedSignatures = new Set();
-
   faces.forEach((face) => {
-    const signature = face.points
-      .map((p) => quantizePoint(p, 1))
-      .sort()
-      .join('|');
-
+    const signature = face.points.map((p) => quantizePoint(p, 1)).sort().join('|');
     if (!usedSignatures.has(signature)) {
       usedSignatures.add(signature);
       uniqueFaces.push(face);
     }
   });
-
   appState.project.derivedFaces = uniqueFaces;
-}
-
-function polygonArea(points) {
-  let area = 0;
-  for (let i = 0; i < points.length; i += 1) {
-    const a = points[i];
-    const b = points[(i + 1) % points.length];
-    area += a.x * b.y - b.x * a.y;
-  }
-  return area / 2;
 }

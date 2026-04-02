@@ -2,10 +2,7 @@
 <html lang="nl">
 <head>
   <meta charset="UTF-8" />
-  <meta
-    name="viewport"
-    content="width=device-width, initial-scale=1.0, viewport-fit=cover"
-  />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>2D Grondplan Teken App</title>
   <link rel="stylesheet" href="css/style.css" />
 </head>
@@ -14,23 +11,18 @@
     <header class="topbar-overlay hidden" id="topbarOverlay">
       <div class="dimension-panel">
         <div class="dimension-title">Afmetingen</div>
-
         <div class="dimension-row">
           <label class="dimension-group">
             <span>B</span>
             <input id="widthInput" type="number" min="1" step="1" value="400" />
             <span>cm</span>
           </label>
-
           <label class="dimension-group">
             <span>H</span>
-            <input id="heightInput" type="number" min="1" step="1" value="400" />
+            <input id="heightInput" type="number" min="1" step="1" value="300" />
             <span>cm</span>
           </label>
-
-          <button id="applyDimensionsBtn" class="primary-btn" type="button">
-            Toepassen
-          </button>
+          <button id="applyDimensionsBtn" class="primary-btn" type="button">Toepassen</button>
         </div>
       </div>
     </header>
@@ -41,27 +33,22 @@
           <span class="tool-icon square-icon"></span>
           <span class="tool-label">Vlak</span>
         </button>
-
         <button class="tool-btn" data-tool="line" type="button">
           <span class="tool-icon line-icon"></span>
           <span class="tool-label">Lijn</span>
         </button>
-
         <button class="tool-btn" data-tool="door" type="button">
           <span class="tool-icon door-icon"></span>
           <span class="tool-label">Deur</span>
         </button>
-
         <button class="tool-btn" data-tool="window" type="button">
           <span class="tool-icon window-icon"></span>
           <span class="tool-label">Raam</span>
         </button>
-
         <button class="tool-btn" data-tool="opening" type="button">
           <span class="tool-icon opening-icon"></span>
           <span class="tool-label">Opening</span>
         </button>
-
         <button class="tool-btn" data-tool="note" type="button">
           <span class="tool-icon note-icon"></span>
           <span class="tool-label">Opmerking</span>
@@ -70,12 +57,7 @@
 
       <section class="canvas-panel">
         <div class="canvas-stage" id="canvasStage">
-          <svg
-            id="planCanvas"
-            viewBox="0 0 1200 900"
-            xmlns="http://www.w3.org/2000/svg"
-            aria-label="Tekenveld"
-          >
+          <svg id="planCanvas" viewBox="0 0 1200 900" xmlns="http://www.w3.org/2000/svg" aria-label="Tekenveld">
             <rect id="canvasBackground" x="0" y="0" width="1200" height="900" fill="#d8d7d1"></rect>
             <g id="viewport">
               <g id="guideLayer"></g>
@@ -93,7 +75,6 @@
         <button class="action-btn" id="deleteBtn" type="button">Verwijder</button>
         <button class="action-btn" id="duplicateBtn" type="button">Dupliceer</button>
       </div>
-
       <div class="actionbar primary-bar">
         <button class="action-btn" id="undoBtn" type="button">Ongedaan maken</button>
         <button class="action-btn" id="redoBtn" type="button">Opnieuw</button>

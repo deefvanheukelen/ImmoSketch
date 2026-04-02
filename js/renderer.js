@@ -11,32 +11,25 @@ import {
 } from './state.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
-
 function createSvgEl(tag, attrs = {}) {
   const el = document.createElementNS(SVG_NS, tag);
-  Object.entries(attrs).forEach(([key, value]) => {
-    el.setAttribute(key, String(value));
-  });
+  Object.entries(attrs).forEach(([key, value]) => el.setAttribute(key, String(value)));
   return el;
 }
 
 export function renderScene() {
   rebuildDerivedFaces();
-
   const viewport = document.getElementById('viewport');
   const shapeLayer = document.getElementById('shapeLayer');
   const selectionLayer = document.getElementById('selectionLayer');
   const guideLayer = document.getElementById('guideLayer');
   const uiLayer = document.getElementById('uiLayer');
-
   const { panX, panY, zoom } = appState.view;
   viewport.setAttribute('transform', `translate(${panX} ${panY}) scale(${zoom})`);
-
   shapeLayer.replaceChildren();
   selectionLayer.replaceChildren();
   guideLayer.replaceChildren();
   uiLayer.replaceChildren();
-
   drawGuides(guideLayer);
   drawDerivedFaces(shapeLayer);
   drawShapes(shapeLayer);
@@ -45,246 +38,81 @@ export function renderScene() {
 }
 
 function drawGuides(layer) {
-  const { vertical, horizontal } = appState.guides;
-
-  if (vertical !== null) {
-    layer.appendChild(
-      createSvgEl('line', {
-        x1: vertical,
-        y1: -2000,
-        x2: vertical,
-        y2: 4000,
-        class: 'snap-guide',
-      }),
-    );
-  }
-
-  if (horizontal !== null) {
-    layer.appendChild(
-      createSvgEl('line', {
-        x1: -2000,
-        y1: horizontal,
-        x2: 4000,
-        y2: horizontal,
-        class: 'snap-guide',
-      }),
-    );
-  }
+  (appState.project.activeGuides || []).forEach((guide) => {
+    if (guide.type === 'vertical') {
+      layer.appendChild(createSvgEl('line', { x1: guide.x, y1: -4000, x2: guide.x, y2: 4000, class: 'guide-line' }));
+    }
+    if (guide.type === 'horizontal') {
+      layer.appendChild(createSvgEl('line', { x1: -4000, y1: guide.y, x2: 4000, y2: guide.y, class: 'guide-line' }));
+    }
+  });
 }
 
 function drawDerivedFaces(layer) {
   appState.project.derivedFaces.forEach((face) => {
     const points = face.points.map((p) => `${p.x},${p.y}`).join(' ');
-    layer.appendChild(
-      createSvgEl('polygon', {
-        points,
-        class: 'detected-face',
-      }),
-    );
+    layer.appendChild(createSvgEl('polygon', { points, class: 'detected-face' }));
   });
 }
 
 function drawShapes(layer) {
   appState.project.shapes.forEach((shape) => {
     if (shape.type === 'rect') {
-      drawRectShape(layer, shape);
+      const corners = getRectCorners(shape);
+      const points = corners.map((p) => `${p.x},${p.y}`).join(' ');
+      layer.appendChild(createSvgEl('polygon', { points, class: 'shape-face', 'data-shape-id': shape.id }));
     }
-
     if (shape.type === 'line') {
-      drawLineShape(layer, shape);
+      layer.appendChild(createSvgEl('line', {
+        x1: shape.x1, y1: shape.y1, x2: shape.x2, y2: shape.y2, class: 'shape-hit-line', 'data-shape-id': shape.id,
+      }));
+      layer.appendChild(createSvgEl('line', {
+        x1: shape.x1, y1: shape.y1, x2: shape.x2, y2: shape.y2, class: 'shape-line', 'data-shape-id': shape.id,
+      }));
     }
   });
-}
-
-function drawRectShape(layer, shape) {
-  const corners = getRectCorners(shape);
-  const points = corners.map((p) => `${p.x},${p.y}`).join(' ');
-
-  const polygon = createSvgEl('polygon', {
-    points,
-    class: 'shape-face',
-    'data-shape-id': shape.id,
-  });
-
-  layer.appendChild(polygon);
-}
-
-function drawLineShape(layer, shape) {
-  const hit = createSvgEl('line', {
-    x1: shape.x1,
-    y1: shape.y1,
-    x2: shape.x2,
-    y2: shape.y2,
-    class: 'shape-hit-line',
-    'data-shape-id': shape.id,
-  });
-
-  const line = createSvgEl('line', {
-    x1: shape.x1,
-    y1: shape.y1,
-    x2: shape.x2,
-    y2: shape.y2,
-    class: 'shape-line',
-    'data-shape-id': shape.id,
-  });
-
-  layer.append(hit, line);
 }
 
 function drawSelection(layer) {
   const selected = getSelectedShape();
-  if (!selected) {
-    return;
-  }
-
+  if (!selected) return;
   if (selected.type === 'rect') {
-    drawRectSelection(layer, selected);
+    const corners = getRectCorners(selected);
+    const center = getRectCenter(selected);
+    layer.appendChild(createSvgEl('polygon', {
+      points: corners.map((p) => `${p.x},${p.y}`).join(' '), class: 'selection-outline',
+    }));
+    corners.forEach((point, index) => {
+      layer.appendChild(createSvgEl('circle', { cx: point.x, cy: point.y, r: 9, class: 'handle', 'data-handle': `resize-${index}` }));
+    });
+    const topY = Math.min(...corners.map((p) => p.y));
+    const rotatePoint = { x: center.x, y: topY - 38 };
+    layer.appendChild(createSvgEl('line', { x1: center.x, y1: topY, x2: rotatePoint.x, y2: rotatePoint.y, class: 'rotate-link' }));
+    layer.appendChild(createSvgEl('circle', { cx: rotatePoint.x, cy: rotatePoint.y, r: 10, class: 'rotate-handle', 'data-handle': 'rotate' }));
     return;
   }
-
   if (selected.type === 'line') {
-    drawLineSelection(layer, selected);
+    layer.appendChild(createSvgEl('line', { x1: selected.x1, y1: selected.y1, x2: selected.x2, y2: selected.y2, class: 'selection-line' }));
+    layer.appendChild(createSvgEl('circle', { cx: selected.x1, cy: selected.y1, r: 9, class: 'handle', 'data-handle': 'line-start' }));
+    layer.appendChild(createSvgEl('circle', { cx: selected.x2, cy: selected.y2, r: 9, class: 'handle', 'data-handle': 'line-end' }));
+    const cx = (selected.x1 + selected.x2) / 2;
+    const cy = (selected.y1 + selected.y2) / 2;
+    layer.appendChild(createSvgEl('line', { x1: cx, y1: cy, x2: cx, y2: cy - 32, class: 'rotate-link' }));
+    layer.appendChild(createSvgEl('circle', { cx, cy: cy - 32, r: 10, class: 'rotate-handle', 'data-handle': 'rotate' }));
   }
-}
-
-function drawRectSelection(layer, shape) {
-  const corners = getRectCorners(shape);
-  const center = getRectCenter(shape);
-  const points = corners.map((p) => `${p.x},${p.y}`).join(' ');
-
-  layer.appendChild(
-    createSvgEl('polygon', {
-      points,
-      class: 'selection-outline',
-    }),
-  );
-
-  corners.forEach((point, index) => {
-    layer.appendChild(
-      createSvgEl('circle', {
-        cx: point.x,
-        cy: point.y,
-        r: 9,
-        class: 'handle',
-        'data-handle': `resize-${index}`,
-      }),
-    );
-  });
-
-  const rotatePoint = {
-    x: center.x,
-    y: Math.min(...corners.map((p) => p.y)) - 38,
-  };
-
-  layer.appendChild(
-    createSvgEl('line', {
-      x1: center.x,
-      y1: center.y - shape.heightPx / 2,
-      x2: rotatePoint.x,
-      y2: rotatePoint.y,
-      class: 'rotate-link',
-    }),
-  );
-
-  layer.appendChild(
-    createSvgEl('circle', {
-      cx: rotatePoint.x,
-      cy: rotatePoint.y,
-      r: 10,
-      class: 'rotate-handle',
-      'data-handle': 'rotate',
-    }),
-  );
-}
-
-function drawLineSelection(layer, shape) {
-  layer.appendChild(
-    createSvgEl('line', {
-      x1: shape.x1,
-      y1: shape.y1,
-      x2: shape.x2,
-      y2: shape.y2,
-      class: 'selection-line',
-    }),
-  );
-
-  layer.appendChild(
-    createSvgEl('circle', {
-      cx: shape.x1,
-      cy: shape.y1,
-      r: 9,
-      class: 'handle',
-      'data-handle': 'line-start',
-    }),
-  );
-
-  layer.appendChild(
-    createSvgEl('circle', {
-      cx: shape.x2,
-      cy: shape.y2,
-      r: 9,
-      class: 'handle',
-      'data-handle': 'line-end',
-    }),
-  );
-
-  const cx = (shape.x1 + shape.x2) / 2;
-  const cy = (shape.y1 + shape.y2) / 2;
-  const rotateHandle = { x: cx, y: cy - 32 };
-
-  layer.appendChild(
-    createSvgEl('line', {
-      x1: cx,
-      y1: cy,
-      x2: rotateHandle.x,
-      y2: rotateHandle.y,
-      class: 'rotate-link',
-    }),
-  );
-
-  layer.appendChild(
-    createSvgEl('circle', {
-      cx: rotateHandle.x,
-      cy: rotateHandle.y,
-      r: 10,
-      class: 'rotate-handle',
-      'data-handle': 'rotate',
-    }),
-  );
 }
 
 function drawDimensions(layer) {
   const selected = getSelectedShape();
-  if (!selected) {
-    return;
-  }
-
+  if (!selected) return;
   if (selected.type === 'rect') {
     const center = getRectCenter(selected);
-    const widthCm = Math.round(pxToCm(selected.widthPx));
-    const heightCm = Math.round(pxToCm(selected.heightPx));
-
-    layer.appendChild(
-      createSvgEl('text', {
-        x: center.x,
-        y: center.y,
-        class: 'dimension-text',
-      }),
-    ).textContent = `${widthCm} × ${heightCm}`;
+    layer.appendChild(createSvgEl('text', { x: center.x, y: center.y, class: 'dimension-text' })).textContent = `${Math.round(pxToCm(selected.widthPx))} × ${Math.round(pxToCm(selected.heightPx))}`;
   }
-
   if (selected.type === 'line') {
     const cx = (selected.x1 + selected.x2) / 2;
     const cy = (selected.y1 + selected.y2) / 2 + 28;
-    const lengthCm = Math.round(pxToCm(getLineLengthPx(selected)));
-
-    layer.appendChild(
-      createSvgEl('text', {
-        x: cx,
-        y: cy,
-        class: 'dimension-text',
-      }),
-    ).textContent = `${lengthCm} cm`;
+    layer.appendChild(createSvgEl('text', { x: cx, y: cy, class: 'dimension-text' })).textContent = `${Math.round(pxToCm(getLineLengthPx(selected)))} cm`;
   }
 }
 
@@ -293,14 +121,11 @@ export function updateTopbarVisibility() {
   const widthInput = document.getElementById('widthInput');
   const heightInput = document.getElementById('heightInput');
   const selected = getSelectedShape();
-
   if (!selected) {
     overlay.classList.add('hidden');
     return;
   }
-
   overlay.classList.remove('hidden');
-
   if (selected.type === 'rect') {
     widthInput.disabled = false;
     heightInput.disabled = false;
