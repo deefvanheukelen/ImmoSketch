@@ -76,100 +76,61 @@ function getPointerDistance(a, b) {
   return Math.hypot(b.clientX - a.clientX, b.clientY - a.clientY);
 }
 
-function getAdjustedPoint(point) {
-  const offset = appState.pointer.grabOffset;
-  if (!offset) return point;
-  return { x: point.x + offset.x, y: point.y + offset.y };
+
+function getHandleWorldThreshold(screenPx = 28) {
+  return screenPx / Math.max(appState.view.zoom || 1, 0.01);
 }
 
-function getHandleAnchorPoint(shape, handle) {
-  if (!shape || !handle) return null;
+function getSelectedHandleAnchors(shape) {
+  if (!shape) return [];
   if (shape.type === 'rect') {
     const corners = getRectCorners(shape);
     const center = getRectCenter(shape);
-    if (handle.startsWith('resize-')) {
-      const index = Number(handle.replace('resize-', ''));
-      return corners[index] || null;
-    }
-    if (handle === 'side-top') return { x: (corners[0].x + corners[1].x) / 2, y: (corners[0].y + corners[1].y) / 2 };
-    if (handle === 'side-right') return { x: (corners[1].x + corners[2].x) / 2, y: (corners[1].y + corners[2].y) / 2 };
-    if (handle === 'side-bottom') return { x: (corners[2].x + corners[3].x) / 2, y: (corners[2].y + corners[3].y) / 2 };
-    if (handle === 'side-left') return { x: (corners[3].x + corners[0].x) / 2, y: (corners[3].y + corners[0].y) / 2 };
-    if (handle === 'rotate') {
-      const topY = Math.min(...corners.map((p) => p.y));
-      return { x: center.x, y: topY - 38 };
-    }
-    return null;
+    const topY = Math.min(...corners.map((p) => p.y));
+    const rotatePoint = { x: center.x, y: topY - 38 };
+    return [
+      ...corners.map((point, index) => ({ name: `resize-${index}`, point, threshold: 30 })),
+      { name: 'side-top', point: { x: (corners[0].x + corners[1].x) / 2, y: (corners[0].y + corners[1].y) / 2 }, threshold: 30 },
+      { name: 'side-right', point: { x: (corners[1].x + corners[2].x) / 2, y: (corners[1].y + corners[2].y) / 2 }, threshold: 30 },
+      { name: 'side-bottom', point: { x: (corners[2].x + corners[3].x) / 2, y: (corners[2].y + corners[3].y) / 2 }, threshold: 30 },
+      { name: 'side-left', point: { x: (corners[3].x + corners[0].x) / 2, y: (corners[3].y + corners[0].y) / 2 }, threshold: 30 },
+      { name: 'rotate', point: rotatePoint, threshold: 34 },
+    ];
   }
   if (shape.type === 'line') {
     const cx = (shape.x1 + shape.x2) / 2;
     const cy = (shape.y1 + shape.y2) / 2;
-    if (handle === 'line-start') return { x: shape.x1, y: shape.y1 };
-    if (handle === 'line-end') return { x: shape.x2, y: shape.y2 };
-    if (handle === 'rotate') return { x: cx, y: cy - 32 };
-    if (handle === 'line-move') {
-      const dx = shape.x2 - shape.x1;
-      const dy = shape.y2 - shape.y1;
-      const len = Math.hypot(dx, dy) || 1;
-      let nx = -dy / len;
-      let ny = dx / len;
-      if (ny < 0 || (Math.abs(ny) < 0.001 && nx < 0)) {
-        nx *= -1;
-        ny *= -1;
-      }
-      return { x: cx + nx * 38, y: cy + ny * 38 };
+    const dx = shape.x2 - shape.x1;
+    const dy = shape.y2 - shape.y1;
+    const len = Math.hypot(dx, dy) || 1;
+    let nx = -dy / len;
+    let ny = dx / len;
+    if (ny < 0 || (Math.abs(ny) < 0.001 && nx < 0)) {
+      nx *= -1; ny *= -1;
     }
-  }
-  return null;
-}
-
-
-function getSoftSnappedAngle(angleDeg) {
-  const normalized = normalizeAngle(angleDeg);
-  const snapStep = appState.project.settings.rotateSnapDeg || 45;
-  const shortWindow = appState.project.settings.rotateSnapWindowDeg || 4;
-  const strongWindow = appState.project.settings.rotateSnapWindow90Deg || 8;
-  let bestTarget = normalized;
-  let bestDiff = Infinity;
-
-  for (let target = 0; target < 360; target += snapStep) {
-    let diff = Math.abs(target - normalized);
-    diff = Math.min(diff, 360 - diff);
-    const isRightAngle = target % 90 === 0;
-    const allowedWindow = isRightAngle ? strongWindow : shortWindow;
-    if (diff <= allowedWindow && diff < bestDiff) {
-      bestDiff = diff;
-      bestTarget = target;
-    }
-  }
-
-  return bestTarget;
-}
-
-function getRectResizeSnapPoints(original, handle, candidateWorldPoint) {
-  const angle = ((original.rotation || 0) * Math.PI) / 180;
-  const centerOriginal = getRectCenter(original);
-  const candidateLocal = rotatePoint(candidateWorldPoint, centerOriginal, -angle);
-
-  if (handle === 'side-top' || handle === 'side-bottom') {
-    const movingLocalY = candidateLocal.y;
-    const x1 = original.x;
-    const x2 = original.x + original.widthPx;
     return [
-      rotatePoint({ x: x1, y: movingLocalY }, centerOriginal, angle),
-      rotatePoint({ x: x2, y: movingLocalY }, centerOriginal, angle),
-      rotatePoint({ x: (x1 + x2) / 2, y: movingLocalY }, centerOriginal, angle),
+      { name: 'line-start', point: { x: shape.x1, y: shape.y1 }, threshold: 30 },
+      { name: 'line-end', point: { x: shape.x2, y: shape.y2 }, threshold: 30 },
+      { name: 'rotate', point: { x: cx, y: cy - 32 }, threshold: 34 },
+      { name: 'line-move', point: { x: cx + nx * 38, y: cy + ny * 38 }, threshold: 34 },
     ];
   }
+  return [];
+}
 
-  const movingLocalX = candidateLocal.x;
-  const y1 = original.y;
-  const y2 = original.y + original.heightPx;
-  return [
-    rotatePoint({ x: movingLocalX, y: y1 }, centerOriginal, angle),
-    rotatePoint({ x: movingLocalX, y: y2 }, centerOriginal, angle),
-    rotatePoint({ x: movingLocalX, y: (y1 + y2) / 2 }, centerOriginal, angle),
-  ];
+function findNearestHandle(point) {
+  const selected = getSelectedShape();
+  if (!selected) return null;
+  const anchors = getSelectedHandleAnchors(selected);
+  let best = null;
+  anchors.forEach((anchor) => {
+    const dist = Math.hypot(point.x - anchor.point.x, point.y - anchor.point.y);
+    const limit = getHandleWorldThreshold(anchor.threshold);
+    if (dist <= limit && (!best || dist < best.dist)) {
+      best = { name: anchor.name, dist };
+    }
+  });
+  return best?.name || null;
 }
 
 function bindToolbar() {
@@ -238,7 +199,8 @@ function onCanvasPointerDown(event) {
   const point = getCanvasPointFromClient(event.clientX, event.clientY);
   if (handlePinchStart(event)) return;
 
-  const handle = event.target.closest('[data-handle]')?.getAttribute('data-handle');
+  const eventHandle = event.target.closest('[data-handle]')?.getAttribute('data-handle');
+  const handle = eventHandle || findNearestHandle(point);
   const shapeId = event.target.closest('[data-shape-id]')?.getAttribute('data-shape-id');
 
   if (handle) {
@@ -259,7 +221,6 @@ function onCanvasPointerDown(event) {
       original: structuredClone(shape),
       rotationClickCandidate: false,
       guides: null,
-      grabOffset: null,
     };
     planCanvas.setPointerCapture(event.pointerId);
     refresh();
@@ -278,7 +239,6 @@ function onCanvasPointerDown(event) {
     original: { panX: appState.view.panX, panY: appState.view.panY },
     rotationClickCandidate: false,
     guides: null,
-    grabOffset: null,
   };
   planCanvas.setPointerCapture(event.pointerId);
   refresh();
@@ -347,8 +307,7 @@ function onCanvasPointerMove(event) {
   }
 
   if (appState.pointer.pointerId !== event.pointerId) return;
-  const rawPoint = getCanvasPointFromClient(event.clientX, event.clientY);
-  const point = getAdjustedPoint(rawPoint);
+  const point = getCanvasPointFromClient(event.clientX, event.clientY);
   const selected = getSelectedShape();
 
   if (appState.pointer.mode === 'pan') {
@@ -401,7 +360,6 @@ function onCanvasPointerUp(event) {
     appState.project.activeGuides = [];
     appState.pointer = {
       mode: 'idle', pointerId: null, startWorld: null, startScreen: null, targetId: null, handle: null, original: null, rotationClickCandidate: false, guides: null,
-      grabOffset: null,
     };
     refresh();
   }
@@ -415,19 +373,16 @@ function startHandleInteraction(event, point, handle) {
   else if ((handle === 'line-start' || handle === 'line-end') && shape.type === 'line') mode = 'move-line-end';
   else if (handle === 'line-move' && shape.type === 'line') mode = 'move-line-body';
   else if (handle === 'rotate') mode = 'rotate';
-  const anchorPoint = getHandleAnchorPoint(shape, handle);
-  const grabOffset = anchorPoint ? { x: anchorPoint.x - point.x, y: anchorPoint.y - point.y } : { x: 0, y: 0 };
   appState.pointer = {
     mode,
     pointerId: event.pointerId,
-    startWorld: anchorPoint || point,
+    startWorld: point,
     startScreen: { x: event.clientX, y: event.clientY },
     targetId: shape.id,
     handle,
     original: structuredClone(shape),
     rotationClickCandidate: mode === 'rotate',
     guides: null,
-    grabOffset,
   };
   planCanvas.setPointerCapture(event.pointerId);
   event.preventDefault();
@@ -706,7 +661,7 @@ function snapNewShapePlacement(tool, point) {
     finalGuides = dedupeGuides([...finalGuides, ...axisSnap.guides]);
   }
 
-  appState.project.activeGuides = [];
+  appState.project.activeGuides = finalGuides;
   return { x: point.x + finalDx, y: point.y + finalDy };
 }
 
@@ -720,7 +675,7 @@ function moveRectWithSnap(selected, point) {
   const axisSnap = getRectAxisSnap({ ...temp, x: temp.x + snap.dx, y: temp.y + snap.dy }, selected.id);
   selected.x = temp.x + snap.dx + axisSnap.dx;
   selected.y = temp.y + snap.dy + axisSnap.dy;
-  appState.project.activeGuides = [];
+  appState.project.activeGuides = dedupeGuides([...(snap.guides || []), ...(axisSnap.guides || [])]);
 }
 
 function moveLineWithSnap(selected, point) {
@@ -735,7 +690,7 @@ function moveLineWithSnap(selected, point) {
   selected.y1 = movingStart.y + snap.dy;
   selected.x2 = movingEnd.x + snap.dx;
   selected.y2 = movingEnd.y + snap.dy;
-  appState.project.activeGuides = [];
+  appState.project.activeGuides = snap.guides;
 }
 
 function resizeRectFromHandle(shape, point) {
@@ -760,14 +715,13 @@ function resizeRectFromHandle(shape, point) {
     shape.x = center.x - shape.widthPx / 2;
     shape.y = center.y - shape.heightPx / 2;
     shape.rotation = original.rotation || 0;
-    appState.project.activeGuides = [];
+    appState.project.activeGuides = snap.guides;
     return;
   }
 
-  const movingEdgePoints = getRectResizeSnapPoints(original, handle, point);
-  const snap = applyMagneticSnap(movingEdgePoints, shape.id);
-  const snappedPoint = { x: point.x + snap.dx, y: point.y + snap.dy };
-  const snappedLocal = rotatePoint(snappedPoint, centerOriginal, -angle);
+  const localPoint = rotatePoint(point, centerOriginal, -angle);
+  const snap = applyMagneticSnap([point], shape.id);
+  const snappedLocal = rotatePoint({ x: point.x + snap.dx, y: point.y + snap.dy }, centerOriginal, -angle);
 
   if (handle === 'side-top' || handle === 'side-bottom') {
     const fixedLocalY = handle === 'side-top' ? original.y + original.heightPx : original.y;
@@ -792,7 +746,7 @@ function resizeRectFromHandle(shape, point) {
   }
 
   shape.rotation = original.rotation || 0;
-  appState.project.activeGuides = [];
+  appState.project.activeGuides = snap.guides;
 }
 
 function moveLineEndpoint(shape, point) {
@@ -808,7 +762,7 @@ function moveLineEndpoint(shape, point) {
     shape.x2 = snapped.x; shape.y2 = snapped.y;
     if (lockedPoint.axisLocked) { shape.x1 = original.x1; shape.y1 = original.y1; }
   }
-  appState.project.activeGuides = [];
+  appState.project.activeGuides = snap.guides;
 }
 
 function moveLineBodyWithSnap(selected, point) {
@@ -823,7 +777,7 @@ function moveLineBodyWithSnap(selected, point) {
   selected.y1 = movingStart.y + snap.dy;
   selected.x2 = movingEnd.x + snap.dx;
   selected.y2 = movingEnd.y + snap.dy;
-  appState.project.activeGuides = [];
+  appState.project.activeGuides = snap.guides;
 }
 
 function rotateSelectedFromPointer(shape, point) {
@@ -832,7 +786,8 @@ function rotateSelectedFromPointer(shape, point) {
   const dy = point.y - origin.y;
   if (Math.hypot(dx, dy) > 8) appState.pointer.rotationClickCandidate = false;
   let angleDeg = (Math.atan2(dy, dx) * 180) / Math.PI + 90;
-  angleDeg = getSoftSnappedAngle(angleDeg);
+  const step = appState.project.settings.rotateSnapDeg || 45;
+  angleDeg = Math.round(angleDeg / step) * step;
   if (shape.type === 'rect') {
     shape.rotation = normalizeAngle(angleDeg);
     return;

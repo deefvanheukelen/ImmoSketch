@@ -52,8 +52,6 @@ export const appState = {
       snapThresholdPx: 34,
       guideThresholdPx: 24,
       rotateSnapDeg: 45,
-      rotateSnapWindowDeg: 4,
-      rotateSnapWindow90Deg: 8,
       lineSnapDistancePx: 22,
       lineAxisBreakPx: 18,
     },
@@ -126,18 +124,27 @@ export function createShapeFromTool(tool, x, y) {
   return shape;
 }
 
+
+export function isRectQuarterTurn(shape) {
+  const angle = normalizeAngle(shape.rotation || 0);
+  return angle === 90 || angle === 270;
+}
+
 export function updateSelectedDimensions(widthCm, heightCm) {
   const selected = getSelectedShape();
   const scale = appState.project.settings.scalePxPerCm;
   if (!selected) return;
   if (selected.type === 'rect') {
     const center = getRectCenter(selected);
-    const normalizedRotation = normalizeAngle(selected.rotation || 0);
-    const isQuarterTurn = normalizedRotation % 180 === 90;
     const widthPx = Math.max(1, widthCm * scale);
     const heightPx = Math.max(1, heightCm * scale);
-    selected.widthPx = isQuarterTurn ? heightPx : widthPx;
-    selected.heightPx = isQuarterTurn ? widthPx : heightPx;
+    if (isRectQuarterTurn(selected)) {
+      selected.widthPx = heightPx;
+      selected.heightPx = widthPx;
+    } else {
+      selected.widthPx = widthPx;
+      selected.heightPx = heightPx;
+    }
     selected.x = center.x - selected.widthPx / 2;
     selected.y = center.y - selected.heightPx / 2;
   }

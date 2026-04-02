@@ -147,19 +147,21 @@ button, input { font: inherit; }
 .secondary-bar { background: var(--bar); }
 .primary-bar { background: var(--bar-dark); }
 .action-btn { border: none; background: transparent; color: white; min-width: 88px; padding: 10px 6px; font-size: 14px; }
-.shape-face { fill: #ffffff; stroke: #111; stroke-width: 1; }
+.shape-face { fill: #ffffff; stroke: #111; stroke-width: 1; pointer-events: visiblePaint; }
 .shape-line { stroke: #111; stroke-width: 1; stroke-linecap: round; }
 .shape-hit-line { stroke: transparent; stroke-width: 44; stroke-linecap: round; }
-.selection-outline { fill: none; stroke: var(--accent); stroke-width: 2; vector-effect: non-scaling-stroke; }
-.selection-line { stroke: var(--accent); stroke-width: 3; stroke-linecap: round; vector-effect: non-scaling-stroke; }
-.handle { fill: white; stroke: var(--accent); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.selection-outline { fill: none; stroke: var(--accent); stroke-width: 2; vector-effect: non-scaling-stroke; pointer-events: none; }
+.selection-line { stroke: var(--accent); stroke-width: 3; stroke-linecap: round; vector-effect: non-scaling-stroke; pointer-events: none; }
+.handle { fill: white; stroke: var(--accent); stroke-width: 2; vector-effect: non-scaling-stroke; pointer-events: none; }
+.handle-hit { fill: transparent; stroke: transparent; pointer-events: all; }
 .side-handle { fill: #dfffe5; }
-.rotate-handle { fill: var(--accent); stroke: #0d7d22; stroke-width: 2; vector-effect: non-scaling-stroke; }
-.rotate-link { stroke: var(--accent); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.rotate-handle { fill: var(--accent); stroke: #0d7d22; stroke-width: 2; vector-effect: non-scaling-stroke; pointer-events: none; }
+.rotate-link { stroke: var(--accent); stroke-width: 2; vector-effect: non-scaling-stroke; pointer-events: none; }
 .dimension-text {
   fill: var(--accent); font-size: 22px; font-weight: 700; text-anchor: middle; dominant-baseline: middle; paint-order: stroke; stroke: rgba(255,255,255,.8); stroke-width: 3px; vector-effect: non-scaling-stroke;
 }
 .guide-line {
+  display: none;
   stroke: rgba(29, 207, 61, 0.9);
   stroke-width: 1.5;
   stroke-dasharray: 8 6;
@@ -190,4 +192,4 @@ button, input { font: inherit; }
   font-size: 20px;
 }
 
-.hidden { display: none !important; }
+#heightGroup.hidden { display: none; }

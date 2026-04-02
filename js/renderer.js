@@ -9,6 +9,7 @@ import {
   rebuildDerivedFaces,
   SVG_WIDTH,
   SVG_HEIGHT,
+  isRectQuarterTurn,
 } from './state.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -39,7 +40,6 @@ export function renderScene() {
 }
 
 function drawGuides(layer) {
-  return layer;
 }
 
 function drawDerivedFaces(layer) {
@@ -50,10 +50,8 @@ function drawDerivedFaces(layer) {
 }
 
 function drawShapes(layer) {
-  const rects = appState.project.shapes.filter((shape) => shape.type === 'rect');
-  const lines = appState.project.shapes.filter((shape) => shape.type === 'line');
-  const sortedRects = [...rects].sort((a, b) => (b.widthPx * b.heightPx) - (a.widthPx * a.heightPx));
-  [...sortedRects, ...lines].forEach((shape) => {
+  const sortedShapes = [...appState.project.shapes].sort((a, b) => getShapeDrawOrder(a) - getShapeDrawOrder(b));
+  sortedShapes.forEach((shape) => {
     if (shape.type === 'rect') {
       const corners = getRectCorners(shape);
       const points = corners.map((p) => `${p.x},${p.y}`).join(' ');
@@ -68,6 +66,39 @@ function drawShapes(layer) {
       }));
     }
   });
+}
+
+
+function getShapeDrawOrder(shape) {
+  if (shape.type === 'line') return -1;
+  return -(shape.widthPx * shape.heightPx);
+}
+
+function getHandleScale() {
+  const zoom = Math.max(appState.view.zoom || 1, 0.01);
+  return 1 / zoom;
+}
+
+function appendHandleCircle(layer, point, handleName, { visibleRadius = 9, hitRadius = 22, className = 'handle' } = {}) {
+  const scale = getHandleScale();
+  layer.appendChild(createSvgEl('circle', {
+    cx: point.x, cy: point.y, r: hitRadius * scale, class: 'handle-hit', 'data-handle': handleName,
+  }));
+  layer.appendChild(createSvgEl('circle', {
+    cx: point.x, cy: point.y, r: visibleRadius * scale, class: className, 'data-handle': handleName,
+  }));
+}
+
+function appendHandleRect(layer, center, handleName, { visibleSize = 20, hitSize = 44, className = 'handle move-handle' } = {}) {
+  const scale = getHandleScale();
+  const hitHalf = (hitSize * scale) / 2;
+  const visibleHalf = (visibleSize * scale) / 2;
+  layer.appendChild(createSvgEl('rect', {
+    x: center.x - hitHalf, y: center.y - hitHalf, width: hitHalf * 2, height: hitHalf * 2, class: 'handle-hit', 'data-handle': handleName,
+  }));
+  layer.appendChild(createSvgEl('rect', {
+    x: center.x - visibleHalf, y: center.y - visibleHalf, width: visibleHalf * 2, height: visibleHalf * 2, rx: 2 * scale, ry: 2 * scale, class: className, 'data-handle': handleName,
+  }));
 }
 
 function drawSelection(layer) {
@@ -87,25 +118,25 @@ function drawSelection(layer) {
       points: corners.map((p) => `${p.x},${p.y}`).join(' '), class: 'selection-outline',
     }));
     corners.forEach((point, index) => {
-      layer.appendChild(createSvgEl('circle', { cx: point.x, cy: point.y, r: 9, class: 'handle', 'data-handle': `resize-${index}` }));
+      appendHandleCircle(layer, point, `resize-${index}`);
     });
     edgeMids.forEach((point) => {
-      layer.appendChild(createSvgEl('circle', { cx: point.x, cy: point.y, r: 8, class: 'handle side-handle', 'data-handle': point.handle }));
+      appendHandleCircle(layer, point, point.handle, { visibleRadius: 8, hitRadius: 22, className: 'handle side-handle' });
     });
     const topY = Math.min(...corners.map((p) => p.y));
     const rotatePoint = { x: center.x, y: topY - 38 };
     layer.appendChild(createSvgEl('line', { x1: center.x, y1: topY, x2: rotatePoint.x, y2: rotatePoint.y, class: 'rotate-link' }));
-    layer.appendChild(createSvgEl('circle', { cx: rotatePoint.x, cy: rotatePoint.y, r: 10, class: 'rotate-handle', 'data-handle': 'rotate' }));
+    appendHandleCircle(layer, rotatePoint, 'rotate', { visibleRadius: 10, hitRadius: 26, className: 'rotate-handle' });
     return;
   }
   if (selected.type === 'line') {
     layer.appendChild(createSvgEl('line', { x1: selected.x1, y1: selected.y1, x2: selected.x2, y2: selected.y2, class: 'selection-line' }));
-    layer.appendChild(createSvgEl('circle', { cx: selected.x1, cy: selected.y1, r: 9, class: 'handle', 'data-handle': 'line-start' }));
-    layer.appendChild(createSvgEl('circle', { cx: selected.x2, cy: selected.y2, r: 9, class: 'handle', 'data-handle': 'line-end' }));
+    appendHandleCircle(layer, { x: selected.x1, y: selected.y1 }, 'line-start');
+    appendHandleCircle(layer, { x: selected.x2, y: selected.y2 }, 'line-end');
     const cx = (selected.x1 + selected.x2) / 2;
     const cy = (selected.y1 + selected.y2) / 2;
     layer.appendChild(createSvgEl('line', { x1: cx, y1: cy, x2: cx, y2: cy - 32, class: 'rotate-link' }));
-    layer.appendChild(createSvgEl('circle', { cx, cy: cy - 32, r: 10, class: 'rotate-handle', 'data-handle': 'rotate' }));
+    appendHandleCircle(layer, { x: cx, y: cy - 32 }, 'rotate', { visibleRadius: 10, hitRadius: 26, className: 'rotate-handle' });
     const dx = selected.x2 - selected.x1;
     const dy = selected.y2 - selected.y1;
     const len = Math.hypot(dx, dy) || 1;
@@ -116,7 +147,7 @@ function drawSelection(layer) {
       ny *= -1;
     }
     const handleCenter = { x: cx + nx * 38, y: cy + ny * 38 };
-    layer.appendChild(createSvgEl('rect', { x: handleCenter.x - 10, y: handleCenter.y - 10, width: 20, height: 20, rx: 2, ry: 2, class: 'handle move-handle', 'data-handle': 'line-move' }));
+    appendHandleRect(layer, handleCenter, 'line-move');
   }
 }
 
@@ -158,8 +189,8 @@ function drawDimensions(layer) {
   const topAngle = (Math.atan2(edges[0][1].y - edges[0][0].y, edges[0][1].x - edges[0][0].x) * 180) / Math.PI;
   const rightAngle = (Math.atan2(edges[1][1].y - edges[1][0].y, edges[1][1].x - edges[1][0].x) * 180) / Math.PI;
 
-  appendAlignedDimensionText(layer, `${Math.round(pxToCm(selected.widthPx))} cm`, topPos, topAngle);
-  appendAlignedDimensionText(layer, `${Math.round(pxToCm(selected.heightPx))} cm`, rightPos, rightAngle);
+  appendAlignedDimensionText(layer, `${Math.round(pxToCm(selected.widthPx))}`, topPos, topAngle);
+  appendAlignedDimensionText(layer, `${Math.round(pxToCm(selected.heightPx))}`, rightPos, rightAngle);
 }
 
 function movePointTowards(from, to, distance) {
@@ -184,19 +215,22 @@ export function updateTopbarVisibility() {
   }
   overlay.classList.remove('hidden');
   if (selected.type === 'rect') {
-    const rotation = ((selected.rotation || 0) % 360 + 360) % 360;
-    const isQuarterTurn = rotation % 180 === 90;
     widthInput.disabled = false;
     heightInput.disabled = false;
-    if (heightGroup) heightGroup.classList.remove('hidden');
-    widthInput.value = Math.round(pxToCm(isQuarterTurn ? selected.heightPx : selected.widthPx));
-    heightInput.value = Math.round(pxToCm(isQuarterTurn ? selected.widthPx : selected.heightPx));
+    heightGroup?.classList.remove('hidden');
+    if (isRectQuarterTurn(selected)) {
+      widthInput.value = Math.round(pxToCm(selected.heightPx));
+      heightInput.value = Math.round(pxToCm(selected.widthPx));
+    } else {
+      widthInput.value = Math.round(pxToCm(selected.widthPx));
+      heightInput.value = Math.round(pxToCm(selected.heightPx));
+    }
   } else {
     widthInput.disabled = false;
     heightInput.disabled = true;
     widthInput.value = Math.round(pxToCm(getLineLengthPx(selected)));
     heightInput.value = '';
-    if (heightGroup) heightGroup.classList.add('hidden');
+    heightGroup?.classList.add('hidden');
   }
 }
 
