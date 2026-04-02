@@ -757,10 +757,12 @@ function applyMagneticSnap(movingPoints, excludeShapeId = null) {
 
 function snapNewShapePlacement(tool, point) {
   const movingPoints = getProspectivePlacementPoints(tool, point);
-  const result = applyMagneticSnap(movingPoints, null);
-  let finalDx = result.dx;
-  let finalDy = result.dy;
-  let finalGuides = [...result.guides];
+  const axisResult = applyMagneticSnap(movingPoints, null);
+  const vectorResult = getTranslationVectorSnap(movingPoints, null);
+  const preferredResult = tool === 'door' ? (vectorResult || axisResult) : axisResult;
+  let finalDx = preferredResult.dx;
+  let finalDy = preferredResult.dy;
+  let finalGuides = [...preferredResult.guides];
 
   if (tool !== 'line' && tool !== 'door') {
     const { widthPx, heightPx } = getDefaultShapeMetrics(tool);
@@ -789,17 +791,19 @@ function moveRectWithSnap(selected, point) {
   const dy = point.y - appState.pointer.startWorld.y;
   const temp = { ...original, x: original.x + dx, y: original.y + dy };
   const movingPoints = getRectSnapPoints(temp);
-  const snap = applyMagneticSnap(movingPoints, selected.id);
+  const axisSnapBase = applyMagneticSnap(movingPoints, selected.id);
   if (isDoorShape(selected)) {
-    selected.x = temp.x + snap.dx;
-    selected.y = temp.y + snap.dy;
-    appState.project.activeGuides = snap.guides || [];
+    const vectorSnap = getTranslationVectorSnap(movingPoints, selected.id);
+    const snap = vectorSnap || axisSnapBase;
+    selected.x = temp.x + (snap?.dx || 0);
+    selected.y = temp.y + (snap?.dy || 0);
+    appState.project.activeGuides = snap?.guides || [];
     return;
   }
-  const axisSnap = getRectAxisSnap({ ...temp, x: temp.x + snap.dx, y: temp.y + snap.dy }, selected.id);
-  selected.x = temp.x + snap.dx + axisSnap.dx;
-  selected.y = temp.y + snap.dy + axisSnap.dy;
-  appState.project.activeGuides = dedupeGuides([...(snap.guides || []), ...(axisSnap.guides || [])]);
+  const axisSnap = getRectAxisSnap({ ...temp, x: temp.x + axisSnapBase.dx, y: temp.y + axisSnapBase.dy }, selected.id);
+  selected.x = temp.x + axisSnapBase.dx + axisSnap.dx;
+  selected.y = temp.y + axisSnapBase.dy + axisSnap.dy;
+  appState.project.activeGuides = dedupeGuides([...(axisSnapBase.guides || []), ...(axisSnap.guides || [])]);
 }
 
 function moveLineWithSnap(selected, point) {
