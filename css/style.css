@@ -123,8 +123,14 @@ button, input { font: inherit; }
 .square-icon::before {
   content: ""; position: absolute; inset: 7px; border: 1px solid #fff; background: rgba(255,255,255,.15);
 }
+.door-icon {
+  background:
+    linear-gradient(#fff, #fff) left 7px bottom 7px / 26px 1px no-repeat,
+    linear-gradient(#fff, #fff) right 7px top 7px / 1px 26px no-repeat;
+}
 .door-icon::before {
-  content: ""; position: absolute; left: 9px; top: 9px; width: 18px; height: 18px; border-left: 1px solid #fff; border-bottom: 1px solid #fff; border-top-left-radius: 18px;
+  content: ""; position: absolute; left: 7px; top: 7px; width: 26px; height: 26px; border: 1px solid transparent; border-top-color: #fff; border-left-color: #fff; border-top-left-radius: 26px;
+  transform: rotate(180deg); transform-origin: center;
 }
 .window-icon::before {
   content: ""; position: absolute; left: 7px; right: 7px; top: 18px; height: 3px; background: #fff; border: 1px solid rgba(255,255,255,.9);
@@ -148,6 +154,7 @@ button, input { font: inherit; }
 .primary-bar { background: var(--bar-dark); }
 .action-btn { border: none; background: transparent; color: white; min-width: 88px; padding: 10px 6px; font-size: 14px; }
 .shape-face { fill: #ffffff; stroke: #111; stroke-width: 1; pointer-events: visiblePaint; }
+.door-hit-area { fill: transparent; stroke: transparent; pointer-events: all; }
 .shape-line { stroke: #111; stroke-width: 1; stroke-linecap: round; }
 .shape-hit-line { stroke: transparent; stroke-width: 44; stroke-linecap: round; }
 .selection-outline { fill: none; stroke: var(--accent); stroke-width: 2; vector-effect: non-scaling-stroke; pointer-events: none; }

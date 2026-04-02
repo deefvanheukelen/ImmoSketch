@@ -10,6 +10,7 @@ import {
   SVG_WIDTH,
   SVG_HEIGHT,
   isRectQuarterTurn,
+  isDoorShape,
 } from './state.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -49,13 +50,56 @@ function drawDerivedFaces(layer) {
   });
 }
 
+function getDoorGeometry(shape) {
+  const corners = getRectCorners(shape);
+  const start = corners[3];
+  const end = corners[1];
+  const radius = Math.hypot(end.x - start.x, end.y - start.y);
+  return {
+    corners,
+    rightEdge: [corners[1], corners[2]],
+    bottomEdge: [corners[2], corners[3]],
+    arcPath: `M ${start.x} ${start.y} A ${radius} ${radius} 0 0 1 ${end.x} ${end.y}`,
+  };
+}
+
+function appendDoorShape(layer, shape) {
+  const { corners, rightEdge, bottomEdge, arcPath } = getDoorGeometry(shape);
+  layer.appendChild(createSvgEl('polygon', {
+    points: corners.map((p) => `${p.x},${p.y}`).join(' '),
+    class: 'door-hit-area',
+    'data-shape-id': shape.id,
+  }));
+  layer.appendChild(createSvgEl('line', {
+    x1: bottomEdge[0].x, y1: bottomEdge[0].y, x2: bottomEdge[1].x, y2: bottomEdge[1].y, class: 'shape-line', 'data-shape-id': shape.id,
+  }));
+  layer.appendChild(createSvgEl('line', {
+    x1: rightEdge[0].x, y1: rightEdge[0].y, x2: rightEdge[1].x, y2: rightEdge[1].y, class: 'shape-line', 'data-shape-id': shape.id,
+  }));
+  layer.appendChild(createSvgEl('path', { d: arcPath, class: 'shape-line', 'data-shape-id': shape.id, fill: 'none' }));
+}
+
+function getDoorMoveHandlePoint(shape) {
+  const corners = getRectCorners(shape);
+  const center = getRectCenter(shape);
+  const bottomMid = { x: (corners[2].x + corners[3].x) / 2, y: (corners[2].y + corners[3].y) / 2 };
+  const vx = bottomMid.x - center.x;
+  const vy = bottomMid.y - center.y;
+  const len = Math.hypot(vx, vy) || 1;
+  return { x: bottomMid.x + (vx / len) * 34, y: bottomMid.y + (vy / len) * 34 };
+}
+
 function drawShapes(layer) {
   const sortedShapes = [...appState.project.shapes].sort((a, b) => getShapeDrawOrder(a) - getShapeDrawOrder(b));
   sortedShapes.forEach((shape) => {
     if (shape.type === 'rect') {
-      const corners = getRectCorners(shape);
-      const points = corners.map((p) => `${p.x},${p.y}`).join(' ');
-      layer.appendChild(createSvgEl('polygon', { points, class: 'shape-face', 'data-shape-id': shape.id }));
+      if (isDoorShape(shape)) {
+        appendDoorShape(layer, shape);
+      } else {
+        const corners = getRectCorners(shape);
+        const points = corners.map((p) => `${p.x},${p.y}`).join(' ');
+        layer.appendChild(createSvgEl('polygon', { points, class: 'shape-face', 'data-shape-id': shape.id }));
+      }
     }
     if (shape.type === 'line') {
       layer.appendChild(createSvgEl('line', {
@@ -120,13 +164,21 @@ function drawSelection(layer) {
     corners.forEach((point, index) => {
       appendHandleCircle(layer, point, `resize-${index}`);
     });
-    edgeMids.forEach((point) => {
-      appendHandleCircle(layer, point, point.handle, { visibleRadius: 8, hitRadius: 22, className: 'handle side-handle' });
-    });
-    const topY = Math.min(...corners.map((p) => p.y));
-    const rotatePoint = { x: center.x, y: topY - 38 };
-    layer.appendChild(createSvgEl('line', { x1: center.x, y1: topY, x2: rotatePoint.x, y2: rotatePoint.y, class: 'rotate-link' }));
+    if (!isDoorShape(selected)) {
+      edgeMids.forEach((point) => {
+        appendHandleCircle(layer, point, point.handle, { visibleRadius: 8, hitRadius: 22, className: 'handle side-handle' });
+      });
+    }
+    const topMid = { x: (corners[0].x + corners[1].x) / 2, y: (corners[0].y + corners[1].y) / 2 };
+    const dx = topMid.x - center.x;
+    const dy = topMid.y - center.y;
+    const len = Math.hypot(dx, dy) || 1;
+    const rotatePoint = { x: topMid.x + (dx / len) * 38, y: topMid.y + (dy / len) * 38 };
+    layer.appendChild(createSvgEl('line', { x1: topMid.x, y1: topMid.y, x2: rotatePoint.x, y2: rotatePoint.y, class: 'rotate-link' }));
     appendHandleCircle(layer, rotatePoint, 'rotate', { visibleRadius: 10, hitRadius: 26, className: 'rotate-handle' });
+    if (isDoorShape(selected)) {
+      appendHandleRect(layer, getDoorMoveHandlePoint(selected), 'door-move');
+    }
     return;
   }
   if (selected.type === 'line') {
@@ -181,15 +233,15 @@ function drawDimensions(layer) {
   const edgeInset = 22;
 
   const topMid = { x: (corners[0].x + corners[1].x) / 2, y: (corners[0].y + corners[1].y) / 2 };
-  const rightMid = { x: (corners[1].x + corners[2].x) / 2, y: (corners[1].y + corners[2].y) / 2 };
-
   const topPos = movePointTowards(topMid, center, edgeInset);
-  const rightPos = movePointTowards(rightMid, center, edgeInset);
-
   const topAngle = (Math.atan2(edges[0][1].y - edges[0][0].y, edges[0][1].x - edges[0][0].x) * 180) / Math.PI;
-  const rightAngle = (Math.atan2(edges[1][1].y - edges[1][0].y, edges[1][1].x - edges[1][0].x) * 180) / Math.PI;
-
   appendAlignedDimensionText(layer, `${Math.round(pxToCm(selected.widthPx))}`, topPos, topAngle);
+
+  if (isDoorShape(selected)) return;
+
+  const rightMid = { x: (corners[1].x + corners[2].x) / 2, y: (corners[1].y + corners[2].y) / 2 };
+  const rightPos = movePointTowards(rightMid, center, edgeInset);
+  const rightAngle = (Math.atan2(edges[1][1].y - edges[1][0].y, edges[1][1].x - edges[1][0].x) * 180) / Math.PI;
   appendAlignedDimensionText(layer, `${Math.round(pxToCm(selected.heightPx))}`, rightPos, rightAngle);
 }
 
@@ -216,14 +268,21 @@ export function updateTopbarVisibility() {
   overlay.classList.remove('hidden');
   if (selected.type === 'rect') {
     widthInput.disabled = false;
-    heightInput.disabled = false;
-    heightGroup?.classList.remove('hidden');
-    if (isRectQuarterTurn(selected)) {
-      widthInput.value = Math.round(pxToCm(selected.heightPx));
-      heightInput.value = Math.round(pxToCm(selected.widthPx));
-    } else {
+    if (isDoorShape(selected)) {
+      heightInput.disabled = true;
+      heightInput.value = '';
+      heightGroup?.classList.add('hidden');
       widthInput.value = Math.round(pxToCm(selected.widthPx));
-      heightInput.value = Math.round(pxToCm(selected.heightPx));
+    } else {
+      heightInput.disabled = false;
+      heightGroup?.classList.remove('hidden');
+      if (isRectQuarterTurn(selected)) {
+        widthInput.value = Math.round(pxToCm(selected.heightPx));
+        heightInput.value = Math.round(pxToCm(selected.widthPx));
+      } else {
+        widthInput.value = Math.round(pxToCm(selected.widthPx));
+        heightInput.value = Math.round(pxToCm(selected.heightPx));
+      }
     }
   } else {
     widthInput.disabled = false;

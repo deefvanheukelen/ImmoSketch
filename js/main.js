@@ -18,6 +18,7 @@ import {
   SVG_WIDTH,
   SVG_HEIGHT,
   getDefaultShapeMetrics,
+  isDoorShape,
 } from './state.js';
 import {
   renderScene,
@@ -76,6 +77,33 @@ function getPointerDistance(a, b) {
   return Math.hypot(b.clientX - a.clientX, b.clientY - a.clientY);
 }
 
+function getDoorSnapLines(shape) {
+  const corners = getRectCorners(shape);
+  return [
+    [corners[1], corners[2]],
+    [corners[2], corners[3]],
+  ];
+}
+
+function getDoorSnapPoints(shape) {
+  const corners = getRectCorners(shape);
+  const lines = getDoorSnapLines(shape);
+  return [
+    ...corners,
+    ...lines.map(([a, b]) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 })),
+  ];
+}
+
+function getDoorMoveHandlePoint(shape) {
+  const corners = getRectCorners(shape);
+  const center = getRectCenter(shape);
+  const bottomMid = { x: (corners[2].x + corners[3].x) / 2, y: (corners[2].y + corners[3].y) / 2 };
+  const vx = bottomMid.x - center.x;
+  const vy = bottomMid.y - center.y;
+  const len = Math.hypot(vx, vy) || 1;
+  return { x: bottomMid.x + (vx / len) * 34, y: bottomMid.y + (vy / len) * 34 };
+}
+
 
 function getHandleWorldThreshold(screenPx = 28) {
   return screenPx / Math.max(appState.view.zoom || 1, 0.01);
@@ -86,10 +114,21 @@ function getSelectedHandleAnchors(shape) {
   if (shape.type === 'rect') {
     const corners = getRectCorners(shape);
     const center = getRectCenter(shape);
-    const topY = Math.min(...corners.map((p) => p.y));
-    const rotatePoint = { x: center.x, y: topY - 38 };
+    const topMid = { x: (corners[0].x + corners[1].x) / 2, y: (corners[0].y + corners[1].y) / 2 };
+    const vx = topMid.x - center.x;
+    const vy = topMid.y - center.y;
+    const len = Math.hypot(vx, vy) || 1;
+    const rotatePoint = { x: topMid.x + (vx / len) * 38, y: topMid.y + (vy / len) * 38 };
+    const cornerAnchors = corners.map((point, index) => ({ name: `resize-${index}`, point, threshold: 30 }));
+    if (isDoorShape(shape)) {
+      return [
+        ...cornerAnchors,
+        { name: 'rotate', point: rotatePoint, threshold: 34 },
+        { name: 'door-move', point: getDoorMoveHandlePoint(shape), threshold: 34 },
+      ];
+    }
     return [
-      ...corners.map((point, index) => ({ name: `resize-${index}`, point, threshold: 30 })),
+      ...cornerAnchors,
       { name: 'side-top', point: { x: (corners[0].x + corners[1].x) / 2, y: (corners[0].y + corners[1].y) / 2 }, threshold: 30 },
       { name: 'side-right', point: { x: (corners[1].x + corners[2].x) / 2, y: (corners[1].y + corners[2].y) / 2 }, threshold: 30 },
       { name: 'side-bottom', point: { x: (corners[2].x + corners[3].x) / 2, y: (corners[2].y + corners[3].y) / 2 }, threshold: 30 },
@@ -445,7 +484,7 @@ function startHandleInteraction(event, point, handle) {
   let mode = 'idle';
   if ((handle.startsWith('resize-') || handle.startsWith('side-')) && shape.type === 'rect') mode = 'resize-rect';
   else if ((handle === 'line-start' || handle === 'line-end') && shape.type === 'line') mode = 'move-line-end';
-  else if (handle === 'line-move' && shape.type === 'line') mode = 'move-line-body';
+  else if ((handle === 'line-move' && shape.type === 'line') || (handle === 'door-move' && isDoorShape(shape))) mode = 'move-shape';
   else if (handle === 'rotate') mode = 'rotate';
   const anchorPoint = getHandleAnchorPoint(shape, handle);
   const handlePointerOffset = anchorPoint ? { x: anchorPoint.x - point.x, y: anchorPoint.y - point.y } : { x: 0, y: 0 };
@@ -488,13 +527,12 @@ function collectSnapCandidates(excludeShapeId = null) {
 
     if (shape.type === 'rect') {
       const corners = getRectCorners(shape);
-      const edges = getRectEdges(shape);
-      const center = getRectCenter(shape);
-      corners.forEach((p) => points.push(p));
-      points.push(center);
+      const edges = isDoorShape(shape) ? getDoorSnapLines(shape) : getRectEdges(shape);
+      const shapePoints = isDoorShape(shape) ? getDoorSnapPoints(shape) : [...corners, getRectCenter(shape), ...getRectEdges(shape).map(([a, b]) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }))];
+      shapePoints.forEach((p) => points.push(p));
       edges.forEach(([a, b]) => {
         const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-        points.push(mid);
+        if (!shapePoints.some((p) => Math.abs(p.x - mid.x) < 0.01 && Math.abs(p.y - mid.y) < 0.01)) points.push(mid);
         lines.push([a, b]);
         axisXs.push(a.x, b.x, mid.x);
         axisYs.push(a.y, b.y, mid.y);
@@ -532,6 +570,7 @@ function dedupeGuides(guides) {
 }
 
 function getRectSnapPoints(shape) {
+  if (isDoorShape(shape)) return getDoorSnapPoints(shape);
   const corners = getRectCorners(shape);
   const center = getRectCenter(shape);
   const points = [...corners, center];
@@ -552,6 +591,7 @@ function getProspectivePlacementPoints(tool, centerPoint) {
   const { widthPx, heightPx } = getDefaultShapeMetrics(tool);
   const temp = {
     type: 'rect',
+    tool,
     x: centerPoint.x - widthPx / 2,
     y: centerPoint.y - heightPx / 2,
     widthPx,
@@ -722,10 +762,11 @@ function snapNewShapePlacement(tool, point) {
   let finalDy = result.dy;
   let finalGuides = [...result.guides];
 
-  if (tool !== 'line') {
+  if (tool !== 'line' && tool !== 'door') {
     const { widthPx, heightPx } = getDefaultShapeMetrics(tool);
     const tempRect = {
       type: 'rect',
+      tool,
       x: point.x - widthPx / 2 + finalDx,
       y: point.y - heightPx / 2 + finalDy,
       widthPx,
@@ -749,6 +790,12 @@ function moveRectWithSnap(selected, point) {
   const temp = { ...original, x: original.x + dx, y: original.y + dy };
   const movingPoints = getRectSnapPoints(temp);
   const snap = applyMagneticSnap(movingPoints, selected.id);
+  if (isDoorShape(selected)) {
+    selected.x = temp.x + snap.dx;
+    selected.y = temp.y + snap.dy;
+    appState.project.activeGuides = snap.guides || [];
+    return;
+  }
   const axisSnap = getRectAxisSnap({ ...temp, x: temp.x + snap.dx, y: temp.y + snap.dy }, selected.id);
   selected.x = temp.x + snap.dx + axisSnap.dx;
   selected.y = temp.y + snap.dy + axisSnap.dy;
@@ -781,6 +828,32 @@ function resizeRectFromHandle(shape, point) {
   const angle = ((original.rotation || 0) * Math.PI) / 180;
   const minSize = 12;
 
+  if (isDoorShape(shape) && handle.startsWith('resize-')) {
+    const handleIndex = Number(handle.replace('resize-', ''));
+    const oppositeIndex = (handleIndex + 2) % 4;
+    const fixed = corners[oppositeIndex];
+    const snap = getPointVectorSnap(point, shape.id) || applyMagneticSnap([point], shape.id);
+    const movingWorld = { x: point.x + (snap?.dx || 0), y: point.y + (snap?.dy || 0) };
+    const center = { x: (fixed.x + movingWorld.x) / 2, y: (fixed.y + movingWorld.y) / 2 };
+    const unrotFixed = rotatePoint(fixed, center, -angle);
+    const unrotMoving = rotatePoint(movingWorld, center, -angle);
+    const dx = unrotMoving.x - unrotFixed.x;
+    const dy = unrotMoving.y - unrotFixed.y;
+    const size = Math.max(minSize, Math.max(Math.abs(dx), Math.abs(dy)));
+    const signedX = dx === 0 ? 1 : Math.sign(dx);
+    const signedY = dy === 0 ? 1 : Math.sign(dy);
+    const adjustedLocalMoving = { x: unrotFixed.x + signedX * size, y: unrotFixed.y + signedY * size };
+    const adjustedWorldMoving = rotatePoint(adjustedLocalMoving, center, angle);
+    const adjustedCenter = { x: (fixed.x + adjustedWorldMoving.x) / 2, y: (fixed.y + adjustedWorldMoving.y) / 2 };
+    shape.widthPx = size;
+    shape.heightPx = size;
+    shape.x = adjustedCenter.x - size / 2;
+    shape.y = adjustedCenter.y - size / 2;
+    shape.rotation = original.rotation || 0;
+    appState.project.activeGuides = snap?.guides || [];
+    return;
+  }
+
   if (handle.startsWith('resize-')) {
     const handleIndex = Number(handle.replace('resize-', ''));
     const oppositeIndex = (handleIndex + 2) % 4;
@@ -799,7 +872,6 @@ function resizeRectFromHandle(shape, point) {
     return;
   }
 
-  const localPoint = rotatePoint(point, centerOriginal, -angle);
   const snap = applyMagneticSnap([point], shape.id);
   const snappedLocal = rotatePoint({ x: point.x + snap.dx, y: point.y + snap.dy }, centerOriginal, -angle);
 

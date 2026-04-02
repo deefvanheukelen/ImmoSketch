@@ -10,7 +10,7 @@ function nextId(prefix) {
 export const TOOL_DEFAULTS = {
   square: { widthCm: 400, heightCm: 300 },
   line: { lengthCm: 300 },
-  door: { widthCm: 90, heightCm: 210 },
+  door: { widthCm: 90, heightCm: 90 },
   window: { widthCm: 120, heightCm: 120 },
   opening: { widthCm: 100, heightCm: 220 },
   note: { widthCm: 140, heightCm: 80 },
@@ -87,6 +87,10 @@ export function getDefaultShapeMetrics(tool) {
     return { lengthPx: TOOL_DEFAULTS.line.lengthCm * scale };
   }
   const fallback = TOOL_DEFAULTS[tool] || TOOL_DEFAULTS.square;
+  if (tool === 'door') {
+    const sizePx = fallback.widthCm * scale;
+    return { widthPx: sizePx, heightPx: sizePx, sizePx };
+  }
   return { widthPx: fallback.widthCm * scale, heightPx: fallback.heightCm * scale };
 }
 
@@ -101,6 +105,22 @@ export function createShapeFromTool(tool, x, y) {
       y1: y,
       x2: x + lengthPx / 2,
       y2: y,
+    };
+    appState.project.shapes.push(shape);
+    setSelection({ type: 'shape', id: shape.id });
+    return shape;
+  }
+  if (tool === 'door') {
+    const sizePx = TOOL_DEFAULTS.door.widthCm * scale;
+    const shape = {
+      id: nextId('door'),
+      type: 'rect',
+      tool: 'door',
+      x: x - sizePx / 2,
+      y: y - sizePx / 2,
+      widthPx: sizePx,
+      heightPx: sizePx,
+      rotation: 0,
     };
     appState.project.shapes.push(shape);
     setSelection({ type: 'shape', id: shape.id });
@@ -130,20 +150,31 @@ export function isRectQuarterTurn(shape) {
   return angle === 90 || angle === 270;
 }
 
+
+export function isDoorShape(shape) {
+  return shape?.type === 'rect' && shape.tool === 'door';
+}
+
 export function updateSelectedDimensions(widthCm, heightCm) {
   const selected = getSelectedShape();
   const scale = appState.project.settings.scalePxPerCm;
   if (!selected) return;
   if (selected.type === 'rect') {
     const center = getRectCenter(selected);
-    const widthPx = Math.max(1, widthCm * scale);
-    const heightPx = Math.max(1, heightCm * scale);
-    if (isRectQuarterTurn(selected)) {
-      selected.widthPx = heightPx;
-      selected.heightPx = widthPx;
+    if (isDoorShape(selected)) {
+      const sizePx = Math.max(1, widthCm * scale);
+      selected.widthPx = sizePx;
+      selected.heightPx = sizePx;
     } else {
-      selected.widthPx = widthPx;
-      selected.heightPx = heightPx;
+      const widthPx = Math.max(1, widthCm * scale);
+      const heightPx = Math.max(1, heightCm * scale);
+      if (isRectQuarterTurn(selected)) {
+        selected.widthPx = heightPx;
+        selected.heightPx = widthPx;
+      } else {
+        selected.widthPx = widthPx;
+        selected.heightPx = heightPx;
+      }
     }
     selected.x = center.x - selected.widthPx / 2;
     selected.y = center.y - selected.heightPx / 2;
