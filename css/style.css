@@ -197,3 +197,17 @@ button, input { font: inherit; }
 }
 
 #heightGroup.hidden { display: none; }
+
+
+.window-dimension-text {
+  fill: #2c6fdb;
+  font-size: 18px;
+  font-style: italic;
+  font-weight: 600;
+  text-anchor: middle;
+  dominant-baseline: middle;
+  paint-order: stroke;
+  stroke: rgba(255,255,255,.9);
+  stroke-width: 3px;
+  vector-effect: non-scaling-stroke;
+}

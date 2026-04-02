@@ -81,6 +81,51 @@ function appendDoorShape(layer, shape) {
   layer.appendChild(createSvgEl('path', { d: arcPath, class: 'shape-line', 'data-shape-id': shape.id, fill: 'none' }));
 }
 
+
+function getLineMidpoint(shape) {
+  return { x: (shape.x1 + shape.x2) / 2, y: (shape.y1 + shape.y2) / 2 };
+}
+
+function getWindowGeometry(shape) {
+  const dx = shape.x2 - shape.x1;
+  const dy = shape.y2 - shape.y1;
+  const len = Math.hypot(dx, dy) || 1;
+  const nx = -dy / len;
+  const ny = dx / len;
+  const halfThickness = 5;
+  return {
+    a1: { x: shape.x1 + nx * halfThickness, y: shape.y1 + ny * halfThickness },
+    a2: { x: shape.x2 + nx * halfThickness, y: shape.y2 + ny * halfThickness },
+    b1: { x: shape.x1 - nx * halfThickness, y: shape.y1 - ny * halfThickness },
+    b2: { x: shape.x2 - nx * halfThickness, y: shape.y2 - ny * halfThickness },
+  };
+}
+
+function appendWindowShape(layer, shape) {
+  const geometry = getWindowGeometry(shape);
+  layer.appendChild(createSvgEl('line', {
+    x1: shape.x1, y1: shape.y1, x2: shape.x2, y2: shape.y2, class: 'shape-hit-line', 'data-shape-id': shape.id,
+  }));
+  layer.appendChild(createSvgEl('line', {
+    x1: geometry.a1.x, y1: geometry.a1.y, x2: geometry.a2.x, y2: geometry.a2.y, class: 'shape-line', 'data-shape-id': shape.id,
+  }));
+  layer.appendChild(createSvgEl('line', {
+    x1: geometry.b1.x, y1: geometry.b1.y, x2: geometry.b2.x, y2: geometry.b2.y, class: 'shape-line', 'data-shape-id': shape.id,
+  }));
+  layer.appendChild(createSvgEl('line', {
+    x1: shape.x1, y1: shape.y1, x2: geometry.a1.x, y2: geometry.a1.y, class: 'shape-line', 'data-shape-id': shape.id,
+  }));
+  layer.appendChild(createSvgEl('line', {
+    x1: shape.x1, y1: shape.y1, x2: geometry.b1.x, y2: geometry.b1.y, class: 'shape-line', 'data-shape-id': shape.id,
+  }));
+  layer.appendChild(createSvgEl('line', {
+    x1: shape.x2, y1: shape.y2, x2: geometry.a2.x, y2: geometry.a2.y, class: 'shape-line', 'data-shape-id': shape.id,
+  }));
+  layer.appendChild(createSvgEl('line', {
+    x1: shape.x2, y1: shape.y2, x2: geometry.b2.x, y2: geometry.b2.y, class: 'shape-line', 'data-shape-id': shape.id,
+  }));
+}
+
 function getAdaptiveHandleOffsetPx(basePx = 54, maxPx = 110) {
   const zoom = Math.max(appState.view.zoom || 1, 0.01);
   const zoomOutBoost = zoom < 1 ? (1 - zoom) * 0.95 : 0;
@@ -144,12 +189,16 @@ function drawShapes(layer) {
       }
     }
     if (shape.type === 'line') {
-      layer.appendChild(createSvgEl('line', {
-        x1: shape.x1, y1: shape.y1, x2: shape.x2, y2: shape.y2, class: 'shape-hit-line', 'data-shape-id': shape.id,
-      }));
-      layer.appendChild(createSvgEl('line', {
-        x1: shape.x1, y1: shape.y1, x2: shape.x2, y2: shape.y2, class: 'shape-line', 'data-shape-id': shape.id,
-      }));
+      if (isWindowShape(shape)) {
+        appendWindowShape(layer, shape);
+      } else {
+        layer.appendChild(createSvgEl('line', {
+          x1: shape.x1, y1: shape.y1, x2: shape.x2, y2: shape.y2, class: 'shape-hit-line', 'data-shape-id': shape.id,
+        }));
+        layer.appendChild(createSvgEl('line', {
+          x1: shape.x1, y1: shape.y1, x2: shape.x2, y2: shape.y2, class: 'shape-line', 'data-shape-id': shape.id,
+        }));
+      }
     }
   });
 }
@@ -234,11 +283,13 @@ function drawSelection(layer) {
     ];
     const halfExtent = Math.max(...projections);
     const offset = getAdaptiveHandleOffsetPx() / Math.max(appState.view.zoom || 1, 0.01);
+    const connectorTop = { x: cx + direction.x * halfExtent, y: cy + direction.y * halfExtent };
+    const connectorBottom = { x: cx - direction.x * halfExtent, y: cy - direction.y * halfExtent };
     const rotatePoint = { x: cx + direction.x * (halfExtent + offset), y: cy + direction.y * (halfExtent + offset) };
     const movePoint = { x: cx - direction.x * (halfExtent + offset), y: cy - direction.y * (halfExtent + offset) };
-    layer.appendChild(createSvgEl('line', { x1: cx, y1: cy, x2: rotatePoint.x, y2: rotatePoint.y, class: 'rotate-link' }));
+    layer.appendChild(createSvgEl('line', { x1: connectorTop.x, y1: connectorTop.y, x2: rotatePoint.x, y2: rotatePoint.y, class: 'rotate-link' }));
     appendHandleCircle(layer, rotatePoint, 'rotate', { visibleRadius: 10, hitRadius: 26, className: 'rotate-handle' });
-    layer.appendChild(createSvgEl('line', { x1: cx, y1: cy, x2: movePoint.x, y2: movePoint.y, class: 'rotate-link' }));
+    layer.appendChild(createSvgEl('line', { x1: connectorBottom.x, y1: connectorBottom.y, x2: movePoint.x, y2: movePoint.y, class: 'rotate-link' }));
     appendHandleRect(layer, movePoint, 'line-move');
   }
 }
@@ -265,7 +316,34 @@ function appendAlignedDimensionText(layer, textValue, position, angleDeg) {
 
 function drawDimensions(layer) {
   const selected = getSelectedShape();
-  if (!selected || selected.type !== 'rect') return;
+  if (!selected) return;
+
+  if (selected.type === 'line' && isWindowShape(selected)) {
+    const mid = getLineMidpoint(selected);
+    const dx = selected.x2 - selected.x1;
+    const dy = selected.y2 - selected.y1;
+    const len = Math.hypot(dx, dy) || 1;
+    let nx = -dy / len;
+    let ny = dx / len;
+    if (ny < 0 || (Math.abs(ny) < 0.001 && nx < 0)) {
+      nx *= -1;
+      ny *= -1;
+    }
+    const offset = 18;
+    const pos = { x: mid.x + nx * offset, y: mid.y + ny * offset };
+    const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
+    const textEl = createSvgEl('text', {
+      x: pos.x,
+      y: pos.y,
+      class: 'window-dimension-text',
+      transform: `rotate(${normalizeReadableAngle(angle)} ${pos.x} ${pos.y})`,
+    });
+    textEl.textContent = `${Math.round(pxToCm(getLineLengthPx(selected)))}`;
+    layer.appendChild(textEl);
+    return;
+  }
+
+  if (selected.type !== 'rect') return;
 
   const corners = getRectCorners(selected);
   const center = getRectCenter(selected);

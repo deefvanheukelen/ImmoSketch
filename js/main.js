@@ -19,6 +19,7 @@ import {
   SVG_HEIGHT,
   getDefaultShapeMetrics,
   isDoorShape,
+  isWindowShape,
   getShapeHandleSessionBaseAngle,
 } from './state.js';
 import {
@@ -93,6 +94,33 @@ function getDoorSnapPoints(shape) {
     ...corners,
     ...lines.map(([a, b]) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 })),
   ];
+}
+
+
+function getLineMidpoint(shape) {
+  return { x: (shape.x1 + shape.x2) / 2, y: (shape.y1 + shape.y2) / 2 };
+}
+
+function getWindowSnapPoints(shape) {
+  const mid = getLineMidpoint(shape);
+  return [mid];
+}
+
+function getWindowCenterlineSnap(shape, excludeShapeId = null) {
+  const threshold = appState.project.settings.lineSnapDistancePx;
+  const center = getLineMidpoint(shape);
+  const { lines } = collectSnapCandidates(excludeShapeId);
+  let best = null;
+  for (const [a, b] of lines) {
+    const cp = closestPointOnSegment(center, a, b);
+    const dx = cp.x - center.x;
+    const dy = cp.y - center.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist <= threshold && (!best || dist < best.dist)) {
+      best = { dx, dy, dist, guides: dedupeGuides([makeGuide('vertical', cp.x), makeGuide('horizontal', cp.y)]) };
+    }
+  }
+  return best ? { dx: best.dx, dy: best.dy, guides: best.guides } : null;
 }
 
 function getAdaptiveHandleOffsetPx(basePx = 54, maxPx = 110) {
@@ -618,9 +646,10 @@ function getRectSnapPoints(shape) {
 }
 
 function getProspectivePlacementPoints(tool, centerPoint) {
-  if (tool === 'line') {
-    const { lengthPx } = getDefaultShapeMetrics('line');
+  if (tool === 'line' || tool === 'window') {
+    const { lengthPx } = getDefaultShapeMetrics(tool);
     const half = lengthPx / 2;
+    if (tool === 'window') return [{ x: centerPoint.x, y: centerPoint.y }];
     return [
       { x: centerPoint.x - half, y: centerPoint.y },
       { x: centerPoint.x + half, y: centerPoint.y },
@@ -798,12 +827,12 @@ function snapNewShapePlacement(tool, point) {
   const movingPoints = getProspectivePlacementPoints(tool, point);
   const axisResult = applyMagneticSnap(movingPoints, null);
   const vectorResult = getTranslationVectorSnap(movingPoints, null);
-  const preferredResult = tool === 'door' ? (vectorResult || axisResult) : axisResult;
+  const preferredResult = tool === 'door' ? (vectorResult || axisResult) : (tool === 'window' ? (getWindowCenterlineSnap({ type: 'line', tool: 'window', x1: point.x - (getDefaultShapeMetrics('window').lengthPx / 2), y1: point.y, x2: point.x + (getDefaultShapeMetrics('window').lengthPx / 2), y2: point.y }, null) || axisResult) : axisResult);
   let finalDx = preferredResult.dx;
   let finalDy = preferredResult.dy;
   let finalGuides = [...preferredResult.guides];
 
-  if (tool !== 'line' && tool !== 'door') {
+  if (tool !== 'line' && tool !== 'door' && tool !== 'window') {
     const { widthPx, heightPx } = getDefaultShapeMetrics(tool);
     const tempRect = {
       type: 'rect',
@@ -852,8 +881,11 @@ function moveLineWithSnap(selected, point) {
   const movingStart = { x: original.x1 + dx, y: original.y1 + dy };
   const movingEnd = { x: original.x2 + dx, y: original.y2 + dy };
   const movingMid = { x: (movingStart.x + movingEnd.x) / 2, y: (movingStart.y + movingEnd.y) / 2 };
-  const axisSnap = applyMagneticSnap([movingStart, movingEnd, movingMid], selected.id);
-  const vectorSnap = getTranslationVectorSnap([movingStart, movingEnd, movingMid], selected.id);
+  const snapPoints = isWindowShape(selected) ? [movingMid] : [movingStart, movingEnd, movingMid];
+  const axisSnap = applyMagneticSnap(snapPoints, selected.id);
+  const vectorSnap = isWindowShape(selected)
+    ? (getWindowCenterlineSnap({ ...selected, x1: movingStart.x, y1: movingStart.y, x2: movingEnd.x, y2: movingEnd.y }, selected.id) || getTranslationVectorSnap(snapPoints, selected.id))
+    : getTranslationVectorSnap(snapPoints, selected.id);
   const snap = vectorSnap || axisSnap;
   selected.x1 = movingStart.x + (snap?.dx || 0);
   selected.y1 = movingStart.y + (snap?.dy || 0);
@@ -970,8 +1002,11 @@ function moveLineBodyWithSnap(selected, point) {
   const movingStart = { x: original.x1 + dx, y: original.y1 + dy };
   const movingEnd = { x: original.x2 + dx, y: original.y2 + dy };
   const movingMid = { x: (movingStart.x + movingEnd.x) / 2, y: (movingStart.y + movingEnd.y) / 2 };
-  const axisSnap = applyMagneticSnap([movingStart, movingEnd, movingMid], selected.id);
-  const vectorSnap = getTranslationVectorSnap([movingStart, movingEnd, movingMid], selected.id);
+  const snapPoints = isWindowShape(selected) ? [movingMid] : [movingStart, movingEnd, movingMid];
+  const axisSnap = applyMagneticSnap(snapPoints, selected.id);
+  const vectorSnap = isWindowShape(selected)
+    ? (getWindowCenterlineSnap({ ...selected, x1: movingStart.x, y1: movingStart.y, x2: movingEnd.x, y2: movingEnd.y }, selected.id) || getTranslationVectorSnap(snapPoints, selected.id))
+    : getTranslationVectorSnap(snapPoints, selected.id);
   const snap = vectorSnap || axisSnap;
   selected.x1 = movingStart.x + (snap?.dx || 0);
   selected.y1 = movingStart.y + (snap?.dy || 0);

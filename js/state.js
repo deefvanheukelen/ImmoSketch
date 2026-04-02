@@ -11,7 +11,7 @@ export const TOOL_DEFAULTS = {
   square: { widthCm: 400, heightCm: 300 },
   line: { lengthCm: 300 },
   door: { widthCm: 90, heightCm: 90 },
-  window: { widthCm: 120, heightCm: 120 },
+  window: { lengthCm: 120 },
   opening: { widthCm: 100, heightCm: 220 },
   note: { widthCm: 140, heightCm: 80 },
 };
@@ -47,7 +47,7 @@ export const appState = {
   },
   project: {
     settings: {
-      scalePxPerCm: 0.5,
+      scalePxPerCm: 1.5,
       snapEnabled: true,
       snapThresholdPx: 34,
       guideThresholdPx: 24,
@@ -98,8 +98,9 @@ export function getSelectedShape() {
 
 export function getDefaultShapeMetrics(tool) {
   const scale = appState.project.settings.scalePxPerCm;
-  if (tool === 'line') {
-    return { lengthPx: TOOL_DEFAULTS.line.lengthCm * scale };
+  if (tool === 'line' || tool === 'window') {
+    const defaults = TOOL_DEFAULTS[tool] || TOOL_DEFAULTS.line;
+    return { lengthPx: defaults.lengthCm * scale };
   }
   const fallback = TOOL_DEFAULTS[tool] || TOOL_DEFAULTS.square;
   if (tool === 'door') {
@@ -111,11 +112,13 @@ export function getDefaultShapeMetrics(tool) {
 
 export function createShapeFromTool(tool, x, y) {
   const scale = appState.project.settings.scalePxPerCm;
-  if (tool === 'line') {
-    const lengthPx = TOOL_DEFAULTS.line.lengthCm * scale;
+  if (tool === 'line' || tool === 'window') {
+    const defaults = TOOL_DEFAULTS[tool] || TOOL_DEFAULTS.line;
+    const lengthPx = defaults.lengthCm * scale;
     const shape = {
-      id: nextId('line'),
+      id: nextId(tool),
       type: 'line',
+      tool,
       x1: x - lengthPx / 2,
       y1: y,
       x2: x + lengthPx / 2,
@@ -168,6 +171,10 @@ export function isRectQuarterTurn(shape) {
 
 export function isDoorShape(shape) {
   return shape?.type === 'rect' && shape.tool === 'door';
+}
+
+export function isWindowShape(shape) {
+  return shape?.type === 'line' && shape.tool === 'window';
 }
 
 export function updateSelectedDimensions(widthCm, heightCm) {
