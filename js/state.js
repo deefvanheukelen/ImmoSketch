@@ -130,8 +130,12 @@ export function updateSelectedDimensions(widthCm, heightCm) {
   if (!selected) return;
   if (selected.type === 'rect') {
     const center = getRectCenter(selected);
-    selected.widthPx = Math.max(1, widthCm * scale);
-    selected.heightPx = Math.max(1, heightCm * scale);
+    const normalizedRotation = normalizeAngle(selected.rotation || 0);
+    const isQuarterTurn = normalizedRotation % 180 === 90;
+    const widthPx = Math.max(1, widthCm * scale);
+    const heightPx = Math.max(1, heightCm * scale);
+    selected.widthPx = isQuarterTurn ? heightPx : widthPx;
+    selected.heightPx = isQuarterTurn ? widthPx : heightPx;
     selected.x = center.x - selected.widthPx / 2;
     selected.y = center.y - selected.heightPx / 2;
   }

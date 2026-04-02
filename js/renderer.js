@@ -39,14 +39,7 @@ export function renderScene() {
 }
 
 function drawGuides(layer) {
-  (appState.project.activeGuides || []).forEach((guide) => {
-    if (guide.type === 'vertical') {
-      layer.appendChild(createSvgEl('line', { x1: guide.x, y1: -4000, x2: guide.x, y2: 4000, class: 'guide-line' }));
-    }
-    if (guide.type === 'horizontal') {
-      layer.appendChild(createSvgEl('line', { x1: -4000, y1: guide.y, x2: 4000, y2: guide.y, class: 'guide-line' }));
-    }
-  });
+  return layer;
 }
 
 function drawDerivedFaces(layer) {
@@ -77,13 +70,6 @@ function drawShapes(layer) {
 function drawSelection(layer) {
   const selected = getSelectedShape();
   if (!selected) return;
-  const zoom = appState.view.zoom || 1;
-  const handleRadius = Math.max(9 / zoom, 5.5);
-  const handleHitRadius = Math.max(22 / zoom, handleRadius + 6 / zoom);
-  const sideHandleRadius = Math.max(8 / zoom, 5);
-  const sideHandleHitRadius = Math.max(20 / zoom, sideHandleRadius + 6 / zoom);
-  const rotateRadius = Math.max(10 / zoom, 6);
-  const rotateHitRadius = Math.max(22 / zoom, rotateRadius + 6 / zoom);
   if (selected.type === 'rect') {
     const corners = getRectCorners(selected);
     const center = getRectCenter(selected);
@@ -98,31 +84,25 @@ function drawSelection(layer) {
       points: corners.map((p) => `${p.x},${p.y}`).join(' '), class: 'selection-outline',
     }));
     corners.forEach((point, index) => {
-      layer.appendChild(createSvgEl('circle', { cx: point.x, cy: point.y, r: handleHitRadius, class: 'handle-hit', 'data-handle': `resize-${index}` }));
-      layer.appendChild(createSvgEl('circle', { cx: point.x, cy: point.y, r: handleRadius, class: 'handle', 'data-handle': `resize-${index}` }));
+      layer.appendChild(createSvgEl('circle', { cx: point.x, cy: point.y, r: 9, class: 'handle', 'data-handle': `resize-${index}` }));
     });
     edgeMids.forEach((point) => {
-      layer.appendChild(createSvgEl('circle', { cx: point.x, cy: point.y, r: sideHandleHitRadius, class: 'handle-hit', 'data-handle': point.handle }));
-      layer.appendChild(createSvgEl('circle', { cx: point.x, cy: point.y, r: sideHandleRadius, class: 'handle side-handle', 'data-handle': point.handle }));
+      layer.appendChild(createSvgEl('circle', { cx: point.x, cy: point.y, r: 8, class: 'handle side-handle', 'data-handle': point.handle }));
     });
     const topY = Math.min(...corners.map((p) => p.y));
     const rotatePoint = { x: center.x, y: topY - 38 };
     layer.appendChild(createSvgEl('line', { x1: center.x, y1: topY, x2: rotatePoint.x, y2: rotatePoint.y, class: 'rotate-link' }));
-    layer.appendChild(createSvgEl('circle', { cx: rotatePoint.x, cy: rotatePoint.y, r: rotateHitRadius, class: 'handle-hit', 'data-handle': 'rotate' }));
-    layer.appendChild(createSvgEl('circle', { cx: rotatePoint.x, cy: rotatePoint.y, r: rotateRadius, class: 'rotate-handle', 'data-handle': 'rotate' }));
+    layer.appendChild(createSvgEl('circle', { cx: rotatePoint.x, cy: rotatePoint.y, r: 10, class: 'rotate-handle', 'data-handle': 'rotate' }));
     return;
   }
   if (selected.type === 'line') {
     layer.appendChild(createSvgEl('line', { x1: selected.x1, y1: selected.y1, x2: selected.x2, y2: selected.y2, class: 'selection-line' }));
-    layer.appendChild(createSvgEl('circle', { cx: selected.x1, cy: selected.y1, r: handleHitRadius, class: 'handle-hit', 'data-handle': 'line-start' }));
-    layer.appendChild(createSvgEl('circle', { cx: selected.x1, cy: selected.y1, r: handleRadius, class: 'handle', 'data-handle': 'line-start' }));
-    layer.appendChild(createSvgEl('circle', { cx: selected.x2, cy: selected.y2, r: handleHitRadius, class: 'handle-hit', 'data-handle': 'line-end' }));
-    layer.appendChild(createSvgEl('circle', { cx: selected.x2, cy: selected.y2, r: handleRadius, class: 'handle', 'data-handle': 'line-end' }));
+    layer.appendChild(createSvgEl('circle', { cx: selected.x1, cy: selected.y1, r: 9, class: 'handle', 'data-handle': 'line-start' }));
+    layer.appendChild(createSvgEl('circle', { cx: selected.x2, cy: selected.y2, r: 9, class: 'handle', 'data-handle': 'line-end' }));
     const cx = (selected.x1 + selected.x2) / 2;
     const cy = (selected.y1 + selected.y2) / 2;
     layer.appendChild(createSvgEl('line', { x1: cx, y1: cy, x2: cx, y2: cy - 32, class: 'rotate-link' }));
-    layer.appendChild(createSvgEl('circle', { cx, cy: cy - 32, r: rotateHitRadius, class: 'handle-hit', 'data-handle': 'rotate' }));
-    layer.appendChild(createSvgEl('circle', { cx, cy: cy - 32, r: rotateRadius, class: 'rotate-handle', 'data-handle': 'rotate' }));
+    layer.appendChild(createSvgEl('circle', { cx, cy: cy - 32, r: 10, class: 'rotate-handle', 'data-handle': 'rotate' }));
     const dx = selected.x2 - selected.x1;
     const dy = selected.y2 - selected.y1;
     const len = Math.hypot(dx, dy) || 1;
@@ -132,11 +112,8 @@ function drawSelection(layer) {
       nx *= -1;
       ny *= -1;
     }
-    const handleCenter = { x: cx + nx * 42, y: cy + ny * 42 };
-    const moveHandleSize = Math.max(20 / zoom, 12);
-    const moveHandleHitSize = Math.max(34 / zoom, moveHandleSize + 8 / zoom);
-    layer.appendChild(createSvgEl('rect', { x: handleCenter.x - moveHandleHitSize / 2, y: handleCenter.y - moveHandleHitSize / 2, width: moveHandleHitSize, height: moveHandleHitSize, rx: 4 / zoom, ry: 4 / zoom, class: 'handle-hit', 'data-handle': 'line-move' }));
-    layer.appendChild(createSvgEl('rect', { x: handleCenter.x - moveHandleSize / 2, y: handleCenter.y - moveHandleSize / 2, width: moveHandleSize, height: moveHandleSize, rx: 2 / zoom, ry: 2 / zoom, class: 'handle move-handle', 'data-handle': 'line-move' }));
+    const handleCenter = { x: cx + nx * 38, y: cy + ny * 38 };
+    layer.appendChild(createSvgEl('rect', { x: handleCenter.x - 10, y: handleCenter.y - 10, width: 20, height: 20, rx: 2, ry: 2, class: 'handle move-handle', 'data-handle': 'line-move' }));
   }
 }
 
@@ -196,6 +173,7 @@ export function updateTopbarVisibility() {
   const overlay = document.getElementById('topbarOverlay');
   const widthInput = document.getElementById('widthInput');
   const heightInput = document.getElementById('heightInput');
+  const heightGroup = document.getElementById('heightGroup');
   const selected = getSelectedShape();
   if (!selected) {
     overlay.classList.add('hidden');
@@ -203,15 +181,19 @@ export function updateTopbarVisibility() {
   }
   overlay.classList.remove('hidden');
   if (selected.type === 'rect') {
+    const rotation = ((selected.rotation || 0) % 360 + 360) % 360;
+    const isQuarterTurn = rotation % 180 === 90;
     widthInput.disabled = false;
     heightInput.disabled = false;
-    widthInput.value = Math.round(pxToCm(selected.widthPx));
-    heightInput.value = Math.round(pxToCm(selected.heightPx));
+    if (heightGroup) heightGroup.classList.remove('hidden');
+    widthInput.value = Math.round(pxToCm(isQuarterTurn ? selected.heightPx : selected.widthPx));
+    heightInput.value = Math.round(pxToCm(isQuarterTurn ? selected.widthPx : selected.heightPx));
   } else {
     widthInput.disabled = false;
     heightInput.disabled = true;
     widthInput.value = Math.round(pxToCm(getLineLengthPx(selected)));
     heightInput.value = '';
+    if (heightGroup) heightGroup.classList.add('hidden');
   }
 }
 
