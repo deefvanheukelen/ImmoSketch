@@ -36,26 +36,7 @@
     </header>
 
     <main class="workspace">
-      <section class="canvas-panel">
-        <div class="canvas-stage" id="canvasStage">
-          <svg
-            id="planCanvas"
-            viewBox="0 0 1200 900"
-            xmlns="http://www.w3.org/2000/svg"
-            aria-label="Tekenveld"
-          >
-            <rect id="canvasBackground" x="0" y="0" width="1200" height="900" fill="#d8d7d1"></rect>
-            <g id="viewport">
-              <g id="guideLayer"></g>
-              <g id="shapeLayer"></g>
-              <g id="selectionLayer"></g>
-              <g id="uiLayer"></g>
-            </g>
-          </svg>
-        </div>
-      </section>
-
-      <aside class="right-toolbar" aria-label="Elementen">
+      <aside class="top-toolbar" aria-label="Elementen">
         <button class="tool-btn active" data-tool="square" type="button">
           <span class="tool-icon square-icon"></span>
           <span class="tool-label">Vlak</span>
@@ -86,6 +67,25 @@
           <span class="tool-label">Opmerking</span>
         </button>
       </aside>
+
+      <section class="canvas-panel">
+        <div class="canvas-stage" id="canvasStage">
+          <svg
+            id="planCanvas"
+            viewBox="0 0 1200 900"
+            xmlns="http://www.w3.org/2000/svg"
+            aria-label="Tekenveld"
+          >
+            <rect id="canvasBackground" x="0" y="0" width="1200" height="900" fill="#d8d7d1"></rect>
+            <g id="viewport">
+              <g id="guideLayer"></g>
+              <g id="shapeLayer"></g>
+              <g id="selectionLayer"></g>
+              <g id="uiLayer"></g>
+            </g>
+          </svg>
+        </div>
+      </section>
     </main>
 
     <footer class="footer-shell">

@@ -15,7 +15,8 @@ import {
   normalizeAngle,
   rotateSelectedBy90Clockwise,
   getLineLengthPx,
-  cmToPx,
+  clearGuides,
+  setGuides,
   SVG_WIDTH,
   SVG_HEIGHT,
 } from './state.js';
@@ -70,14 +71,6 @@ function screenToWorld(svgX, svgY) {
   return {
     x: (svgX - panX) / zoom,
     y: (svgY - panY) / zoom,
-  };
-}
-
-function worldToScreen(worldX, worldY) {
-  const { panX, panY, zoom } = appState.view;
-  return {
-    x: worldX * zoom + panX,
-    y: worldY * zoom + panY,
   };
 }
 
@@ -139,6 +132,7 @@ function bindToolbar() {
         const point = getCanvasPointFromClient(event.clientX, event.clientY);
         const snapped = snapNewShapePlacement(tool, point);
         createShapeFromTool(tool, snapped.x, snapped.y);
+        clearGuides();
         refresh();
       }
 
@@ -154,69 +148,226 @@ function bindToolbar() {
 }
 
 function snapNewShapePlacement(tool, point) {
-  if (!appState.project.settings.snapEnabled) {
-    return point;
-  }
-
-  const candidates = collectSnapCandidates();
-  if (!candidates.length) {
-    return point;
-  }
-
-  let best = null;
-  for (const candidate of candidates) {
-    const d = Math.hypot(candidate.x - point.x, candidate.y - point.y);
-    if (d <= appState.project.settings.snapThresholdPx && (!best || d < best.d)) {
-      best = { x: candidate.x, y: candidate.y, d };
-    }
-  }
-
-  return best ? { x: best.x, y: best.y } : point;
+  const preview = buildPlacementPreview(tool, point);
+  const magnet = computeMagneticPlacement(preview, null);
+  return magnet.point;
 }
 
-function collectSnapCandidates(excludeShapeId = null) {
-  const points = [];
+function buildPlacementPreview(tool, point) {
+  const scale = appState.project.settings.scalePxPerCm;
 
-  appState.project.shapes.forEach((shape) => {
-    if (shape.id === excludeShapeId) {
-      return;
-    }
+  if (tool === 'line') {
+    const lengthPx = 300 * scale;
+    return {
+      type: 'line',
+      x1: point.x - lengthPx / 2,
+      y1: point.y,
+      x2: point.x + lengthPx / 2,
+      y2: point.y,
+      center: { x: point.x, y: point.y },
+    };
+  }
+
+  const defaults = {
+    square: { widthCm: 400, heightCm: 300 },
+    door: { widthCm: 90, heightCm: 210 },
+    window: { widthCm: 120, heightCm: 120 },
+    opening: { widthCm: 100, heightCm: 220 },
+    note: { widthCm: 140, heightCm: 80 },
+  }[tool] || { widthCm: 400, heightCm: 300 };
+
+  const widthPx = defaults.widthCm * scale;
+  const heightPx = defaults.heightCm * scale;
+  return {
+    type: 'rect',
+    x: point.x - widthPx / 2,
+    y: point.y - heightPx / 2,
+    widthPx,
+    heightPx,
+    rotation: 0,
+    center: { x: point.x, y: point.y },
+  };
+}
+
+function collectSnapTargets(excludeShapeId = null) {
+  const targets = [];
+
+  for (const shape of appState.project.shapes) {
+    if (shape.id === excludeShapeId) continue;
 
     if (shape.type === 'line') {
-      points.push({ x: shape.x1, y: shape.y1 });
-      points.push({ x: shape.x2, y: shape.y2 });
-      points.push({ x: (shape.x1 + shape.x2) / 2, y: (shape.y1 + shape.y2) / 2 });
-    }
-
-    if (shape.type === 'rect') {
+      const cx = (shape.x1 + shape.x2) / 2;
+      const cy = (shape.y1 + shape.y2) / 2;
+      targets.push({ x: shape.x1, y: shape.y1, kind: 'point' });
+      targets.push({ x: shape.x2, y: shape.y2, kind: 'point' });
+      targets.push({ x: cx, y: cy, kind: 'point' });
+      targets.push({ x: shape.x1, y: null, kind: 'vline' });
+      targets.push({ x: shape.x2, y: null, kind: 'vline' });
+      targets.push({ x: cx, y: null, kind: 'vline' });
+      targets.push({ x: null, y: shape.y1, kind: 'hline' });
+      targets.push({ x: null, y: shape.y2, kind: 'hline' });
+      targets.push({ x: null, y: cy, kind: 'hline' });
+    } else if (shape.type === 'rect') {
+      const center = getRectCenter(shape);
       const corners = getRectCorners(shape);
-      corners.forEach((p) => points.push(p));
-      points.push(getRectCenter(shape));
+      const xs = corners.map((p) => p.x);
+      const ys = corners.map((p) => p.y);
+      const minX = Math.min(...xs);
+      const maxX = Math.max(...xs);
+      const minY = Math.min(...ys);
+      const maxY = Math.max(...ys);
 
-      getRectEdges(shape).forEach(([a, b]) => {
-        points.push({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
-      });
+      corners.forEach((p) => targets.push({ x: p.x, y: p.y, kind: 'point' }));
+      targets.push({ x: center.x, y: center.y, kind: 'point' });
+      targets.push({ x: minX, y: null, kind: 'vline' });
+      targets.push({ x: center.x, y: null, kind: 'vline' });
+      targets.push({ x: maxX, y: null, kind: 'vline' });
+      targets.push({ x: null, y: minY, kind: 'hline' });
+      targets.push({ x: null, y: center.y, kind: 'hline' });
+      targets.push({ x: null, y: maxY, kind: 'hline' });
     }
-  });
+  }
 
-  return points;
+  return targets;
 }
 
-function snapPointToElements(point, excludeShapeId = null) {
-  const candidates = collectSnapCandidates(excludeShapeId);
-  if (!candidates.length) {
-    return point;
+function getMovingAnchors(shape) {
+  if (shape.type === 'line') {
+    const cx = (shape.x1 + shape.x2) / 2;
+    const cy = (shape.y1 + shape.y2) / 2;
+    return {
+      points: [
+        { x: shape.x1, y: shape.y1 },
+        { x: shape.x2, y: shape.y2 },
+        { x: cx, y: cy },
+      ],
+      xs: [shape.x1, cx, shape.x2],
+      ys: [shape.y1, cy, shape.y2],
+    };
   }
 
-  let best = null;
-  for (const candidate of candidates) {
-    const d = Math.hypot(candidate.x - point.x, candidate.y - point.y);
-    if (d <= appState.project.settings.snapThresholdPx && (!best || d < best.d)) {
-      best = { ...candidate, d };
+  const center = getRectCenter(shape);
+  const corners = getRectCorners(shape);
+  const xs = corners.map((p) => p.x);
+  const ys = corners.map((p) => p.y);
+  return {
+    points: [...corners, center],
+    xs: [Math.min(...xs), center.x, Math.max(...xs)],
+    ys: [Math.min(...ys), center.y, Math.max(...ys)],
+  };
+}
+
+function computeMagneticPlacement(shape, excludeShapeId = null) {
+  const settings = appState.project.settings;
+  const anchors = getMovingAnchors(shape);
+  const targets = collectSnapTargets(excludeShapeId);
+
+  let bestPointShift = null;
+  let bestXShift = null;
+  let bestYShift = null;
+
+  for (const target of targets) {
+    if (target.kind === 'point') {
+      for (const point of anchors.points) {
+        const dx = target.x - point.x;
+        const dy = target.y - point.y;
+        const distance = Math.hypot(dx, dy);
+
+        if (distance <= settings.magnetStrengthPx) {
+          const score = distance;
+          if (!bestPointShift || score < bestPointShift.score) {
+            bestPointShift = { dx, dy, score, x: target.x, y: target.y };
+          }
+        }
+      }
+    }
+
+    if (target.kind === 'vline') {
+      for (const x of anchors.xs) {
+        const dx = target.x - x;
+        const distance = Math.abs(dx);
+        if (distance <= settings.magnetStrengthPx) {
+          const score = distance;
+          if (!bestXShift || score < bestXShift.score) {
+            bestXShift = { dx, score, guide: target.x };
+          }
+        }
+      }
+    }
+
+    if (target.kind === 'hline') {
+      for (const y of anchors.ys) {
+        const dy = target.y - y;
+        const distance = Math.abs(dy);
+        if (distance <= settings.magnetStrengthPx) {
+          const score = distance;
+          if (!bestYShift || score < bestYShift.score) {
+            bestYShift = { dy, score, guide: target.y };
+          }
+        }
+      }
     }
   }
 
-  return best ? { x: best.x, y: best.y } : point;
+  let dx = 0;
+  let dy = 0;
+  let vertical = null;
+  let horizontal = null;
+
+  if (bestPointShift && bestPointShift.score <= settings.snapThresholdPx) {
+    dx = bestPointShift.dx;
+    dy = bestPointShift.dy;
+    vertical = bestPointShift.x;
+    horizontal = bestPointShift.y;
+  } else {
+    if (bestXShift) {
+      dx = applyMagnetCurve(bestXShift.dx, settings);
+      if (Math.abs(bestXShift.dx) <= settings.snapThresholdPx) {
+        dx = bestXShift.dx;
+      }
+      vertical = bestXShift.guide;
+    }
+
+    if (bestYShift) {
+      dy = applyMagnetCurve(bestYShift.dy, settings);
+      if (Math.abs(bestYShift.dy) <= settings.snapThresholdPx) {
+        dy = bestYShift.dy;
+      }
+      horizontal = bestYShift.guide;
+    }
+  }
+
+  setGuides({ vertical, horizontal });
+
+  return {
+    point: translateShapeCenter(shape, dx, dy),
+    dx,
+    dy,
+  };
+}
+
+function applyMagnetCurve(delta, settings) {
+  const abs = Math.abs(delta);
+  if (abs > settings.magnetStrengthPx) {
+    return 0;
+  }
+
+  const factor = 1 - abs / settings.magnetStrengthPx;
+  return delta * (0.22 + factor * 0.78);
+}
+
+function translateShapeCenter(shape, dx, dy) {
+  if (shape.type === 'line') {
+    return {
+      x: shape.center.x + dx,
+      y: shape.center.y + dy,
+    };
+  }
+
+  return {
+    x: shape.center.x + dx,
+    y: shape.center.y + dy,
+  };
 }
 
 function bindCanvas() {
@@ -249,7 +400,7 @@ function onCanvasPointerDown(event) {
 
   const point = getCanvasPointFromClient(event.clientX, event.clientY);
 
-  if (handlePinchStart(event, point)) {
+  if (handlePinchStart(event)) {
     return;
   }
 
@@ -287,6 +438,7 @@ function onCanvasPointerDown(event) {
   }
 
   clearSelection();
+  clearGuides();
   appState.pointer = {
     mode: 'pan',
     pointerId: event.pointerId,
@@ -306,7 +458,7 @@ function onCanvasPointerDown(event) {
   refresh();
 }
 
-function handlePinchStart(event, point) {
+function handlePinchStart(event) {
   if (!planCanvas.hasPointerCapture(event.pointerId)) {
     planCanvas.setPointerCapture(event.pointerId);
   }
@@ -332,8 +484,6 @@ function handlePinchStart(event, point) {
     appState.pinch.active = true;
     appState.pinch.startDistance = getPointerDistance(a, b);
     appState.pinch.startZoom = appState.view.zoom;
-    appState.pinch.startPanX = appState.view.panX;
-    appState.pinch.startPanY = appState.view.panY;
 
     const midClientX = (a.clientX + b.clientX) / 2;
     const midClientY = (a.clientY + b.clientY) / 2;
@@ -406,6 +556,7 @@ function onCanvasPointerMove(event) {
   const selected = getSelectedShape();
 
   if (appState.pointer.mode === 'pan') {
+    clearGuides();
     const dx = event.clientX - appState.pointer.startScreen.x;
     const dy = event.clientY - appState.pointer.startScreen.y;
 
@@ -425,31 +576,35 @@ function onCanvasPointerMove(event) {
     if (selected.type === 'rect') {
       const dx = point.x - appState.pointer.startWorld.x;
       const dy = point.y - appState.pointer.startWorld.y;
-      const movedCenter = {
-        x: original.x + original.widthPx / 2 + dx,
-        y: original.y + original.heightPx / 2 + dy,
+      const preview = {
+        ...original,
+        x: original.x + dx,
+        y: original.y + dy,
       };
-      const snappedCenter = snapPointToElements(movedCenter, selected.id);
-
-      selected.x = snappedCenter.x - original.widthPx / 2;
-      selected.y = snappedCenter.y - original.heightPx / 2;
+      const magnet = computeMagneticPlacement(preview, selected.id);
+      selected.x = preview.x + magnet.dx;
+      selected.y = preview.y + magnet.dy;
     }
 
     if (selected.type === 'line') {
       const dx = point.x - appState.pointer.startWorld.x;
       const dy = point.y - appState.pointer.startWorld.y;
-      const center = {
-        x: (original.x1 + original.x2) / 2 + dx,
-        y: (original.y1 + original.y2) / 2 + dy,
+      const preview = {
+        ...original,
+        x1: original.x1 + dx,
+        y1: original.y1 + dy,
+        x2: original.x2 + dx,
+        y2: original.y2 + dy,
+        center: {
+          x: (original.x1 + original.x2) / 2 + dx,
+          y: (original.y1 + original.y2) / 2 + dy,
+        },
       };
-      const snappedCenter = snapPointToElements(center, selected.id);
-      const offsetX = snappedCenter.x - center.x;
-      const offsetY = snappedCenter.y - center.y;
-
-      selected.x1 = original.x1 + dx + offsetX;
-      selected.y1 = original.y1 + dy + offsetY;
-      selected.x2 = original.x2 + dx + offsetX;
-      selected.y2 = original.y2 + dy + offsetY;
+      const magnet = computeMagneticPlacement(preview, selected.id);
+      selected.x1 = preview.x1 + magnet.dx;
+      selected.y1 = preview.y1 + magnet.dy;
+      selected.x2 = preview.x2 + magnet.dx;
+      selected.y2 = preview.y2 + magnet.dy;
     }
 
     refresh();
@@ -469,6 +624,7 @@ function onCanvasPointerMove(event) {
   }
 
   if (appState.pointer.mode === 'rotate' && selected) {
+    clearGuides();
     rotateSelectedFromPointer(selected, point);
     refresh();
   }
@@ -495,6 +651,7 @@ function onCanvasPointerUp(event) {
       }
     }
 
+    clearGuides();
     appState.pointer = {
       mode: 'idle',
       pointerId: null,
@@ -549,17 +706,15 @@ function resizeRectFromHandle(shape, point) {
   const handleIndex = Number(appState.pointer.handle.replace('resize-', ''));
   const oppositeIndex = (handleIndex + 2) % 4;
 
-  const movingWorld = snapPointToElements(point, shape.id);
   const fixed = corners[oppositeIndex];
-
   const center = {
-    x: (fixed.x + movingWorld.x) / 2,
-    y: (fixed.y + movingWorld.y) / 2,
+    x: (fixed.x + point.x) / 2,
+    y: (fixed.y + point.y) / 2,
   };
 
   const angle = ((original.rotation || 0) * Math.PI) / 180;
   const unrotFixed = rotatePoint(fixed, center, -angle);
-  const unrotMoving = rotatePoint(movingWorld, center, -angle);
+  const unrotMoving = rotatePoint(point, center, -angle);
 
   const minSize = 12;
   const width = Math.max(minSize, Math.abs(unrotMoving.x - unrotFixed.x));
@@ -570,10 +725,14 @@ function resizeRectFromHandle(shape, point) {
   shape.x = center.x - width / 2;
   shape.y = center.y - height / 2;
   shape.rotation = original.rotation || 0;
+
+  const magnet = computeMagneticPlacement(shape, shape.id);
+  shape.x += magnet.dx;
+  shape.y += magnet.dy;
 }
 
 function moveLineEndpoint(shape, point) {
-  const snapped = snapPointToElements(point, shape.id);
+  const snapped = snapLineEndpointWithMagnet(shape, point);
 
   if (appState.pointer.handle === 'line-start') {
     shape.x1 = snapped.x;
@@ -584,6 +743,38 @@ function moveLineEndpoint(shape, point) {
     shape.x2 = snapped.x;
     shape.y2 = snapped.y;
   }
+}
+
+function snapLineEndpointWithMagnet(shape, point) {
+  const settings = appState.project.settings;
+  const targets = collectSnapTargets(shape.id).filter((target) => target.kind === 'point');
+  let best = null;
+
+  for (const target of targets) {
+    const dx = target.x - point.x;
+    const dy = target.y - point.y;
+    const distance = Math.hypot(dx, dy);
+    if (distance <= settings.magnetStrengthPx && (!best || distance < best.distance)) {
+      best = { x: target.x, y: target.y, distance };
+    }
+  }
+
+  if (!best) {
+    clearGuides();
+    return point;
+  }
+
+  setGuides({ vertical: best.x, horizontal: best.y });
+
+  if (best.distance <= settings.snapThresholdPx) {
+    return { x: best.x, y: best.y };
+  }
+
+  const factor = 1 - best.distance / settings.magnetStrengthPx;
+  return {
+    x: point.x + (best.x - point.x) * (0.22 + factor * 0.78),
+    y: point.y + (best.y - point.y) * (0.22 + factor * 0.78),
+  };
 }
 
 function rotateSelectedFromPointer(shape, point) {
@@ -668,6 +859,7 @@ function bindDimensions() {
     const widthCm = Math.max(1, Number(widthInput.value) || 1);
     const heightCm = Math.max(1, Number(heightInput.value) || 1);
     updateSelectedDimensions(widthCm, heightCm);
+    clearGuides();
     refresh();
   });
 }
@@ -675,12 +867,14 @@ function bindDimensions() {
 function bindBottomBar() {
   deleteBtn.addEventListener('click', () => {
     if (deleteSelectedShape()) {
+      clearGuides();
       refresh();
     }
   });
 
   duplicateBtn.addEventListener('click', () => {
     duplicateSelectedShape();
+    clearGuides();
     refresh();
   });
 

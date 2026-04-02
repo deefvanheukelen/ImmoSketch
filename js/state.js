@@ -48,11 +48,16 @@ export const appState = {
     startPanY: 0,
     startWorldMid: null,
   },
+  guides: {
+    vertical: null,
+    horizontal: null,
+  },
   project: {
     settings: {
       scalePxPerCm: 0.5,
       snapEnabled: true,
-      snapThresholdPx: 18,
+      snapThresholdPx: 28,
+      magnetStrengthPx: 80,
       rotateSnapDeg: 45,
     },
     selection: null,
@@ -71,6 +76,16 @@ export function clearSelection() {
 
 export function setSelection(selection) {
   appState.project.selection = selection;
+}
+
+export function clearGuides() {
+  appState.guides.vertical = null;
+  appState.guides.horizontal = null;
+}
+
+export function setGuides(guides) {
+  appState.guides.vertical = guides.vertical ?? null;
+  appState.guides.horizontal = guides.horizontal ?? null;
 }
 
 export function getSelectedShape() {
@@ -137,7 +152,6 @@ export function updateSelectedDimensions(widthCm, heightCm) {
   }
 
   if (selected.type === 'line') {
-    const current = getLineLengthPx(selected);
     const target = Math.max(1, widthCm * scale);
     const angle = Math.atan2(selected.y2 - selected.y1, selected.x2 - selected.x1);
     const cx = (selected.x1 + selected.x2) / 2;

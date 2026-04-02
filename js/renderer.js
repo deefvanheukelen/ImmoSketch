@@ -3,7 +3,6 @@ import {
   getSelectedShape,
   getRectCenter,
   getRectCorners,
-  getRectEdges,
   getLineLengthPx,
   pxToCm,
   rebuildDerivedFaces,
@@ -38,10 +37,39 @@ export function renderScene() {
   guideLayer.replaceChildren();
   uiLayer.replaceChildren();
 
+  drawGuides(guideLayer);
   drawDerivedFaces(shapeLayer);
   drawShapes(shapeLayer);
   drawSelection(selectionLayer);
   drawDimensions(uiLayer);
+}
+
+function drawGuides(layer) {
+  const { vertical, horizontal } = appState.guides;
+
+  if (vertical !== null) {
+    layer.appendChild(
+      createSvgEl('line', {
+        x1: vertical,
+        y1: -2000,
+        x2: vertical,
+        y2: 4000,
+        class: 'snap-guide',
+      }),
+    );
+  }
+
+  if (horizontal !== null) {
+    layer.appendChild(
+      createSvgEl('line', {
+        x1: -2000,
+        y1: horizontal,
+        x2: 4000,
+        y2: horizontal,
+        class: 'snap-guide',
+      }),
+    );
+  }
 }
 
 function drawDerivedFaces(layer) {

@@ -2,16 +2,14 @@
   --bg: #d9d8d3;
   --canvas: #d8d7d1;
   --toolbar: #556a70;
-  --toolbar-dark: #4b5d62;
   --bar: #4e4e50;
   --bar-dark: #343537;
   --text: #f4f4f4;
   --ink: #202020;
-  --soft: #efefef;
   --accent: #1dcf3d;
-  --outline: #111111;
   --shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
   --bottom-height: 112px;
+  --toolbar-height: 96px;
 }
 
 * {
@@ -53,8 +51,22 @@ input {
   position: absolute;
   inset: 0 0 var(--bottom-height) 0;
   display: grid;
-  grid-template-columns: 1fr 96px;
+  grid-template-rows: var(--toolbar-height) 1fr;
   min-height: 0;
+}
+
+.top-toolbar {
+  background: var(--toolbar);
+  color: var(--text);
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 8px;
+  padding: 10px 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
 }
 
 .canvas-panel {
@@ -83,7 +95,7 @@ input {
   position: absolute;
   top: max(10px, env(safe-area-inset-top));
   left: 12px;
-  right: 108px;
+  right: 12px;
   z-index: 30;
   pointer-events: none;
 }
@@ -146,19 +158,8 @@ input {
   padding: 10px 14px;
 }
 
-.right-toolbar {
-  background: var(--toolbar);
-  color: var(--text);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 12px 8px;
-  overflow-y: auto;
-  overflow-x: hidden;
-}
-
 .tool-btn {
-  width: 100%;
+  min-width: 78px;
   border: none;
   background: transparent;
   color: inherit;
@@ -166,15 +167,11 @@ input {
   flex-direction: column;
   align-items: center;
   gap: 6px;
-  padding: 8px 4px;
+  padding: 8px 6px;
   border-radius: 8px;
   touch-action: none;
   user-select: none;
-}
-
-.tool-btn.active,
-.tool-btn:active {
-  background: var(--toolbar-dark);
+  flex: 0 0 auto;
 }
 
 .tool-label {
@@ -187,51 +184,65 @@ input {
   width: 40px;
   height: 40px;
   position: relative;
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  border-radius: 6px;
 }
 
 .line-icon::before {
   content: "";
   position: absolute;
-  left: 2px;
-  right: 2px;
+  left: 4px;
+  right: 4px;
   top: 19px;
   height: 1px;
   background: #101010;
 }
 
-.square-icon {
+.square-icon::before {
+  content: "";
+  position: absolute;
+  inset: 8px;
   border: 1px solid #101010;
   background: rgba(255, 255, 255, 0.28);
 }
 
-.door-icon {
+.door-icon::before {
+  content: "";
+  position: absolute;
+  left: 10px;
+  top: 8px;
+  width: 18px;
+  height: 22px;
   border-left: 1px solid #101010;
   border-bottom: 1px solid #101010;
-  border-top-left-radius: 40px;
+  border-top-left-radius: 24px;
 }
 
 .window-icon::before {
   content: "";
   position: absolute;
-  left: 5px;
-  right: 5px;
-  top: 19px;
-  height: 1px;
+  left: 7px;
+  right: 7px;
+  top: 18px;
+  height: 3px;
   background: #f4f4f4;
   border: 1px solid #222;
 }
 
-.opening-icon {
-  border: 1px dashed rgba(0, 0, 0, 0.6);
-  width: 34px;
-  height: 16px;
-  margin-top: 12px;
+.opening-icon::before {
+  content: "";
+  position: absolute;
+  left: 7px;
+  right: 7px;
+  top: 15px;
+  height: 10px;
+  border: 1px dashed rgba(0, 0, 0, 0.7);
 }
 
 .note-icon::before {
   content: "";
   position: absolute;
-  inset: 7px 7px 12px 7px;
+  inset: 8px 8px 13px 8px;
   background: #fff;
   border: 1px solid #222;
   border-radius: 2px;
@@ -240,10 +251,10 @@ input {
 .note-icon::after {
   content: "";
   position: absolute;
-  left: 13px;
-  bottom: 8px;
-  width: 9px;
-  height: 9px;
+  left: 15px;
+  bottom: 9px;
+  width: 8px;
+  height: 8px;
   background: #fff;
   border-left: 1px solid #222;
   border-bottom: 1px solid #222;
@@ -298,7 +309,7 @@ input {
 
 .shape-hit-line {
   stroke: transparent;
-  stroke-width: 28;
+  stroke-width: 36;
   stroke-linecap: round;
 }
 
@@ -354,6 +365,14 @@ input {
   stroke-width: 1;
 }
 
+.snap-guide {
+  stroke: rgba(29, 207, 61, 0.9);
+  stroke-width: 1.5;
+  stroke-dasharray: 1 10;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
 .drag-ghost {
   position: fixed;
   z-index: 999;
@@ -393,34 +412,10 @@ input {
   transform: translateX(-50%) translateY(0);
 }
 
-@media (max-width: 860px) {
+@media (max-width: 700px) {
   :root {
     --bottom-height: 118px;
-  }
-
-  .workspace {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto 1fr;
-  }
-
-  .right-toolbar {
-    order: -1;
-    flex-direction: row;
-    align-items: stretch;
-    overflow-x: auto;
-    overflow-y: hidden;
-    padding: 8px;
-    min-height: 78px;
-  }
-
-  .tool-btn {
-    min-width: 78px;
-  }
-
-  .topbar-overlay {
-    left: 10px;
-    right: 10px;
-    top: max(8px, env(safe-area-inset-top));
+    --toolbar-height: 88px;
   }
 
   .dimension-panel {
@@ -429,6 +424,10 @@ input {
 
   .dimension-row {
     gap: 8px;
+  }
+
+  .tool-btn {
+    min-width: 74px;
   }
 }
 
