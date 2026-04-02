@@ -50,7 +50,10 @@ function drawDerivedFaces(layer) {
 }
 
 function drawShapes(layer) {
-  appState.project.shapes.forEach((shape) => {
+  const rects = appState.project.shapes.filter((shape) => shape.type === 'rect');
+  const lines = appState.project.shapes.filter((shape) => shape.type === 'line');
+  const sortedRects = [...rects].sort((a, b) => (b.widthPx * b.heightPx) - (a.widthPx * a.heightPx));
+  [...sortedRects, ...lines].forEach((shape) => {
     if (shape.type === 'rect') {
       const corners = getRectCorners(shape);
       const points = corners.map((p) => `${p.x},${p.y}`).join(' ');

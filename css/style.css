@@ -147,7 +147,7 @@ button, input { font: inherit; }
 .secondary-bar { background: var(--bar); }
 .primary-bar { background: var(--bar-dark); }
 .action-btn { border: none; background: transparent; color: white; min-width: 88px; padding: 10px 6px; font-size: 14px; }
-.shape-face { fill: rgba(255,255,255,.28); stroke: #111; stroke-width: 1; }
+.shape-face { fill: #ffffff; stroke: #111; stroke-width: 1; }
 .shape-line { stroke: #111; stroke-width: 1; stroke-linecap: round; }
 .shape-hit-line { stroke: transparent; stroke-width: 44; stroke-linecap: round; }
 .selection-outline { fill: none; stroke: var(--accent); stroke-width: 2; vector-effect: non-scaling-stroke; }
