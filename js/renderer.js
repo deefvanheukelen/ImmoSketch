@@ -79,11 +79,21 @@ function drawSelection(layer) {
   if (selected.type === 'rect') {
     const corners = getRectCorners(selected);
     const center = getRectCenter(selected);
+    const edgeMids = [
+      { x: (corners[0].x + corners[1].x) / 2, y: (corners[0].y + corners[1].y) / 2, handle: 'side-top' },
+      { x: (corners[1].x + corners[2].x) / 2, y: (corners[1].y + corners[2].y) / 2, handle: 'side-right' },
+      { x: (corners[2].x + corners[3].x) / 2, y: (corners[2].y + corners[3].y) / 2, handle: 'side-bottom' },
+      { x: (corners[3].x + corners[0].x) / 2, y: (corners[3].y + corners[0].y) / 2, handle: 'side-left' },
+    ];
+
     layer.appendChild(createSvgEl('polygon', {
       points: corners.map((p) => `${p.x},${p.y}`).join(' '), class: 'selection-outline',
     }));
     corners.forEach((point, index) => {
       layer.appendChild(createSvgEl('circle', { cx: point.x, cy: point.y, r: 9, class: 'handle', 'data-handle': `resize-${index}` }));
+    });
+    edgeMids.forEach((point) => {
+      layer.appendChild(createSvgEl('circle', { cx: point.x, cy: point.y, r: 8, class: 'handle side-handle', 'data-handle': point.handle }));
     });
     const topY = Math.min(...corners.map((p) => p.y));
     const rotatePoint = { x: center.x, y: topY - 38 };

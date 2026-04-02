@@ -50,6 +50,7 @@ button, input { font: inherit; }
   overflow-y: hidden;
   align-items: stretch;
   white-space: nowrap;
+  scrollbar-width: thin;
 }
 .canvas-panel, .canvas-stage {
   min-width: 0;
@@ -105,6 +106,9 @@ button, input { font: inherit; }
   padding: 8px 6px;
   touch-action: none;
   user-select: none;
+  appearance: none;
+  outline: none;
+  box-shadow: none;
 }
 .tool-label { font-size: 12px; text-align: center; }
 .tool-icon {
@@ -112,8 +116,6 @@ button, input { font: inherit; }
   width: 40px;
   height: 40px;
   position: relative;
-  border: 1px solid rgba(255,255,255,.8);
-  border-radius: 6px;
 }
 .line-icon::before {
   content: ""; position: absolute; left: 4px; right: 4px; top: 20px; height: 1px; background: #fff;
@@ -125,7 +127,7 @@ button, input { font: inherit; }
   content: ""; position: absolute; left: 9px; top: 9px; width: 18px; height: 18px; border-left: 1px solid #fff; border-bottom: 1px solid #fff; border-top-left-radius: 18px;
 }
 .window-icon::before {
-  content: ""; position: absolute; left: 7px; right: 7px; top: 18px; height: 3px; background: #fff;
+  content: ""; position: absolute; left: 7px; right: 7px; top: 18px; height: 3px; background: #fff; border: 1px solid rgba(255,255,255,.9);
 }
 .opening-icon::before {
   content: ""; position: absolute; left: 7px; right: 7px; top: 16px; height: 8px; border: 1px dashed #fff;
@@ -151,6 +153,7 @@ button, input { font: inherit; }
 .selection-outline { fill: none; stroke: var(--accent); stroke-width: 2; vector-effect: non-scaling-stroke; }
 .selection-line { stroke: var(--accent); stroke-width: 3; stroke-linecap: round; vector-effect: non-scaling-stroke; }
 .handle { fill: white; stroke: var(--accent); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.side-handle { fill: #dfffe5; }
 .rotate-handle { fill: var(--accent); stroke: #0d7d22; stroke-width: 2; vector-effect: non-scaling-stroke; }
 .rotate-link { stroke: var(--accent); stroke-width: 2; vector-effect: non-scaling-stroke; }
 .dimension-text {
