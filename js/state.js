@@ -52,7 +52,7 @@ export const appState = {
       snapThresholdPx: 34,
       guideThresholdPx: 24,
       rotateSnapDeg: 45,
-      lineSnapDistancePx: 22,
+      lineSnapDistancePx: 28,
       lineAxisBreakPx: 18,
     },
     selection: null,
