@@ -182,3 +182,5 @@ button, input { font: inherit; }
   .dimension-group input { width: 56px; }
   .action-btn { min-width: 76px; font-size: 13px; }
 }
+
+.move-handle { fill: #ffffff; }
